@@ -29,6 +29,15 @@ inline constexpr int STRIKE_MAX_STEPS = 6;
 inline constexpr double THREAT_PER_LEN = 60.0;
 // ... and a small penalty when the trade it could take would be even.
 inline constexpr double THREAT_EVEN = 15.0;
+// Hunting: pull towards enemy heads worth trading with, per segment gained (capped).
+inline constexpr double HUNT_ATTRACT = 60.0;
+inline constexpr double HUNT_GAIN_CAP = 10.0;
+inline constexpr int HUNT_MEMORY = 8; // rounds a sighting stays worth chasing
+// Aggression: with at least AGGRO_RATIO times as many of our heads in view as theirs (and a few
+// dragons to spare), take even trades and chase harder.
+inline constexpr double AGGRO_RATIO = 2.0;
+inline constexpr int AGGRO_MIN_UNITS = 3;
+inline constexpr double HUNT_ATTRACT_AGGRO = 200.0;
 
 // --- Consolidation (feeding the king) -----------------------------------------
 // Any visible ally longer than us (ties to the lower id) is a king worth dying next to.
@@ -44,6 +53,12 @@ inline constexpr double FOOD_SUM = 3.0;          // sum of discounted pearl valu
 inline constexpr double GAMMA_BEST = 0.85;       // per-step discount for the best target
 inline constexpr double GAMMA_SUM = 0.8;         // per-step discount for the sum
 inline constexpr double TRAPPED = 20000.0;       // cannot reach our own tail and little room
+// Count as our room only tiles we reach no later than any other dragon's head.
+inline constexpr bool VORONOI = true;
+// Long dragons value room: per tile reachable, up to this many tiles per segment.
+inline constexpr int KING_ROOM_LEN = 10;
+inline constexpr double KING_ROOM = 6.0;
+inline constexpr int KING_ROOM_TILES_PER_LEN = 3;
 inline constexpr double UNKNOWN_PORTAL = 3000.0; // stepping into a portal whose far end we do not know
 inline constexpr double OUT_OF_VIEW = 1500.0;    // landing on a tile we cannot see (through a portal)
 inline constexpr double REVISIT = 40.0;          // per unit of recent-visit heat on the destination

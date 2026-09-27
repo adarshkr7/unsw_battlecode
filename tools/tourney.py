@@ -103,6 +103,7 @@ def main() -> None:
     ap.add_argument("-j", "--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     ap.add_argument("--native", action="store_true", help="run native binaries instead of the judge sandbox")
     ap.add_argument("--replays", help="keep replays of games bot1 did not win in this folder")
+    ap.add_argument("--no-longest", action="store_true", help="skip reading each game's longest dragon from its replay")
     ap.add_argument("--json", help="write every game's result to this file")
     args = ap.parse_args()
 
@@ -124,6 +125,10 @@ def main() -> None:
     replay_tmp = None
     if args.replays:
         replay_tmp = ROOT / args.replays / "_tmp"
+    elif not args.no_longest:
+        replay_tmp = ROOT / "results" / "tourney_tmp"
+    if replay_tmp:
+        shutil.rmtree(replay_tmp, ignore_errors=True)
         replay_tmp.mkdir(parents=True, exist_ok=True)
 
     jobs = []
@@ -149,6 +154,25 @@ def main() -> None:
                 print(f"\r[{i}/{len(jobs)}] {r['tag']}: {mark} ({r['rounds']} rounds, {r['reason']})".ljust(80),
                       end="" if i < len(jobs) else "\n", flush=True)
 
+    # The engine reports total length only; the replay knows each team's longest dragon.
+    if replay_tmp and not args.no_longest:
+        files = [r["replay"] for r in results if r["ok"] and r["replay"] and pathlib.Path(r["replay"]).is_file()]
+        longest = {}
+        for i in range(0, len(files), 40):
+            chunk = files[i:i + 40]
+            done = subprocess.run(["node", str(ROOT / "tools" / "replay.cjs"), "--json", "--result-only", *chunk],
+                                  capture_output=True, text=True, cwd=ROOT)
+            if done.returncode == 0:
+                for item in json.loads(done.stdout):
+                    longest[item["file"]] = item["result"]
+            else:
+                print(f"replay decoding failed: {done.stderr.strip()[:300]}")
+                break
+        for r in results:
+            res = longest.get(pathlib.Path(r["replay"]).name) if r.get("replay") else None
+            if res:
+                r["longest"] = {"A": res["teamA"]["longestDragon"], "B": res["teamB"]["longestDragon"]}
+
     # Tally from bot1's point of view.
     per_map = collections.OrderedDict((n, collections.Counter()) for n in names)
     deaths = {1: collections.Counter(), 2: collections.Counter()}
@@ -156,9 +180,17 @@ def main() -> None:
     errors = {1: collections.Counter(), 2: collections.Counter()}
     lengths = {1: [], 2: []}
     dragons = {1: [], 2: []}
+    longs = {1: [], 2: []}
+    reasons = collections.Counter()
     for r in results:
         team1 = r["bot1_team"]
         team_of = {team1: 1, ("B" if team1 == "A" else "A"): 2}
+        if r.get("longest"):
+            for team, k in team_of.items():
+                longs[k].append(r["longest"][team])
+        if r["ok"]:
+            won = "W" if r["winner"] == team1 else "D" if r["winner"] == "draw" else "L"
+            reasons[(won, "elim" if "elimination" in r["reason"] else "length")] += 1
         if r.get("final"):
             f = r["final"]
             for team, k in team_of.items():
@@ -191,6 +223,11 @@ def main() -> None:
     print(f"{'TOTAL':<18}{total['W']:>4}{total['D']:>4}{total['L']:>4}   {score:5.0%}   "
           f"({args.bot1} vs {args.bot2}, {time.monotonic() - started:.0f}s)")
 
+    if reasons:
+        print("bot1 results by how games ended: " + ", ".join(f"{w} {how} {n}" for (w, how), n in sorted(reasons.items())))
+    for k, label in ((1, args.bot1), (2, args.bot2)):
+        if longs[k]:
+            print(f"longest dragon at the end {label}: mean {sum(longs[k]) / len(longs[k]):.1f}")
     for k, label in ((1, args.bot1), (2, args.bot2)):
         if lengths[k]:
             print(f"final total length {label}: mean {sum(lengths[k]) / len(lengths[k]):.1f}   "
@@ -205,7 +242,9 @@ def main() -> None:
         for msg, n in counter.most_common(5):
             print(f"errors ({'bot1' if k == 1 else 'bot2' if k == 2 else 'engine'}) x{n}: {msg}")
 
-    if replay_tmp:
+    if replay_tmp and not args.replays:
+        shutil.rmtree(replay_tmp, ignore_errors=True)
+    elif replay_tmp:
         kept = 0
         for r in results:
             if r["ok"] and r["winner"] != r["bot1_team"] and r["replay"] and pathlib.Path(r["replay"]).is_file():

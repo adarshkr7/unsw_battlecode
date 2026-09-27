@@ -77,6 +77,14 @@ struct Brain {
     int kingTile = -1, kingLen = 0;
     std::vector<int> kingDist;
 
+    // Hunting: enemy heads we saw recently (a big dragon stays worth chasing for a while).
+    struct Sighting { int id; int tile; int len; int round; };
+    std::vector<Sighting> sightings;
+    std::vector<int> preyDist; // steps to the nearest enemy head worth trading with
+    std::vector<int> othersDist; // moves any other dragon's head needs to reach a tile (bodies block)
+    bool aggressive = false;     // we clearly outnumber the enemies around us
+    double preyGain = 0.0;     // what the best such trade is worth
+
     // Our own body, head first. Tracked across turns so we know it beyond the window.
     std::deque<int> body;
     std::vector<int> plannedPath;
@@ -86,6 +94,7 @@ struct Brain {
     std::vector<int> distE, distA, ownerA, block, dist, queue, staticBlock, seen, from, fromDir;
     std::vector<std::pair<int, int>> blockSaved;
     int stamp = 0;
+    std::vector<uint8_t> owned; // during evaluate's search: tile is in our Voronoi room
     std::vector<int> ownStamp; // == ownScenario for tiles of our own body in the current scenario
     int ownScenario = 0;
     std::vector<double> powBest, powSum, decayPow, heatDecay;
@@ -123,7 +132,10 @@ struct Brain {
         fromDir.assign(N, 0);
         threatLen.assign(N, INF);
         kingDist.assign(N, INF);
+        preyDist.assign(N, INF);
+        othersDist.assign(N, INF);
         ownStamp.assign(N, 0);
+        owned.assign(N, 0);
         queue.assign(N, 0);
         powBest.resize(N + 2);
         powSum.resize(N + 2);
@@ -381,7 +393,8 @@ struct Brain {
 
     // -- evaluation ----------------------------------------------------------
 
-    void bfsFrom(std::vector<Head> const& sources, std::vector<int>& out, std::vector<int>* owner) {
+    void bfsFrom(std::vector<Head> const& sources, std::vector<int>& out, std::vector<int>* owner,
+                 bool throughBodies = true) {
         std::fill(out.begin(), out.end(), INF);
         if (owner)
             std::fill(owner->begin(), owner->end(), -1);
@@ -398,7 +411,7 @@ struct Brain {
             int const t = queue[qh++];
             for (int d = 0; d < 4; d++) {
                 int const n = nbr[t * 4 + d];
-                if (n < 0 || out[n] != INF)
+                if (n < 0 || out[n] != INF || (!throughBodies && inView[n] && occId[n] >= 0))
                     continue;
                 out[n] = out[t] + 1;
                 if (owner)
@@ -501,10 +514,13 @@ struct Brain {
         raiseBlock(dest, INF);
         bool reachedOwn = false;
 
-        // Time-aware BFS from dest, scoring pearls as we go.
+        // Time-aware BFS from dest, scoring pearls as we go. Every reachable tile counts for
+        // pearls and for reaching our own tail; only tiles we reach no later than any other
+        // head (and through such tiles) count as our room.
         newSearch();
-        int qh = 0, qt = 0;
+        int qh = 0, qt = 0, room = 1;
         visit(dest, 0);
+        owned[dest] = 1;
         queue[qt++] = dest;
         double best = 0.0, sum = 0.0;
         while (qh < qt) {
@@ -529,18 +545,24 @@ struct Brain {
                 if (ownStamp[n] == ownScenario)
                     reachedOwn = true;
                 visit(n, k + 1);
+                // We are on move, so ties with another head are ours.
+                owned[n] = owned[t] && (!params::VORONOI || othersDist[n] >= k + 2);
+                room += owned[n];
                 queue[qt++] = n;
             }
         }
         restoreBlock();
-        c.space = qt;
-        c.safe = reachedOwn || qt >= roomyEnough(newLength);
+        c.space = room;
+        c.safe = reachedOwn || room >= roomyEnough(newLength);
         score += params::FOOD_BEST * best + params::FOOD_SUM * sum;
 
         if (!c.safe)
             score -= params::TRAPPED - 50.0 * std::min(c.space, newLength);
         else
             score += 0.5 * std::min(c.space, 3 * newLength);
+        // A long dragon (our king, usually) dies or has to split when boxed in: keep it in the open.
+        if (newLength >= params::KING_ROOM_LEN)
+            score += params::KING_ROOM * std::min(c.space, params::KING_ROOM_TILES_PER_LEN * newLength);
 
         // An enemy that can reach dest next turn may trade heads with us.
         if (threatLen[dest] < INF) {
@@ -549,6 +571,9 @@ struct Brain {
         }
         if (kingTile >= 0 && kingDist[dest] < INF)
             score += params::FEED_ATTRACT / (1.0 + kingDist[dest]);
+        if (preyGain > 0.0 && preyDist[dest] < INF)
+            score += (aggressive ? params::HUNT_ATTRACT_AGGRO : params::HUNT_ATTRACT) *
+                     std::min(preyGain, params::HUNT_GAIN_CAP) / (1.0 + preyDist[dest]);
         score += std::uniform_real_distribution<double>(0.0, 1.0)(rng);
         c.score = score;
     }
@@ -683,9 +708,10 @@ struct Brain {
         int const gain = enemyLen - myLen;
         if (gain > 0)
             return gain;
-        // Even trades thin both swarms; worth it while we have dragons to spare.
-        if (gain == 0 && round < params::CONSOLIDATE_ROUND && units >= params::TRADE_MIN_UNITS)
-            return 0.5;
+        // Even trades thin both swarms; worth it while we have dragons to spare, or when we
+        // outnumber the enemies around us (their losses hurt them more).
+        if (gain == 0 && (aggressive || (round < params::CONSOLIDATE_ROUND && units >= params::TRADE_MIN_UNITS)))
+            return aggressive ? 1.0 : 0.5;
         return -1.0;
     }
 
@@ -741,6 +767,38 @@ struct Brain {
         plannedPath.clear();
         ct.set_indicator_string("strike " + std::to_string(steps));
         return true;
+    }
+
+    // Remember enemy heads, and aim at those worth a head trade (seen now or very recently).
+    void choosePrey(int length, int units) {
+        for (auto const& e : enemyHeads) {
+            bool updated = false;
+            for (auto& sg : sightings) {
+                if (sg.id == e.id) {
+                    sg = {e.id, e.tile, e.len, round};
+                    updated = true;
+                }
+            }
+            if (!updated)
+                sightings.push_back({e.id, e.tile, e.len, round});
+        }
+        std::erase_if(sightings, [&](Sighting const& sg) {
+            // Forget what is stale, and what we can see is no longer there.
+            return round - sg.round > params::HUNT_MEMORY || (sg.round < round && inView[sg.tile]);
+        });
+        preyGain = 0.0;
+        std::vector<Head> prey;
+        for (auto const& sg : sightings) {
+            double const g = tradeGain(sg.len, length, units);
+            if (g <= 0.0)
+                continue;
+            prey.push_back({sg.id, sg.tile, sg.len});
+            preyGain = std::max(preyGain, g);
+        }
+        if (prey.empty())
+            std::fill(preyDist.begin(), preyDist.end(), INF);
+        else
+            bfsFrom(prey, preyDist, nullptr);
     }
 
     // Late game: the longest ally in view that we should feed, if any.
@@ -814,6 +872,11 @@ struct Brain {
         bfsFrom(enemyHeads, distE, nullptr);
         std::sort(allyHeads.begin(), allyHeads.end(), [](Head const& a, Head const& b) { return a.id < b.id; });
         bfsFrom(allyHeads, distA, &ownerA);
+        if (params::VORONOI) {
+            std::vector<Head> others(enemyHeads);
+            others.insert(others.end(), allyHeads.begin(), allyHeads.end());
+            bfsFrom(others, othersDist, nullptr, false);
+        }
 
         std::fill(staticBlock.begin(), staticBlock.end(), 0);
         for (int t = 0; t < N; t++)
@@ -823,8 +886,11 @@ struct Brain {
         blockSaved.clear();
 
         int const units = ct.get_unit_count();
+        aggressive = units >= params::AGGRO_MIN_UNITS && !enemyHeads.empty() &&
+                     static_cast<double>(allyHeads.size() + 1) >= params::AGGRO_RATIO * enemyHeads.size();
         computeThreats();
         chooseKing(length, units);
+        choosePrey(length, units);
 
         Candidate cands[4];
         for (int d = 0; d < 4; d++) {

@@ -25,9 +25,11 @@ globalThis.requestAnimationFrame = noop;
 globalThis.acquireVsCodeApi = () => ({ postMessage: noop, setState: noop, getState: () => null });
 require(decoderPath);
 
-function summarise(file, every) {
+function summarise(file, every, resultOnly) {
     const bytes = fs.readFileSync(file);
     const replay = globalThis.__replay.decode(new Uint8Array(bytes).buffer);
+    if (resultOnly)
+        return { file: path.basename(file), result: replay.result };
     const match = replay.match;
     const teamOf = new Map();
     const timeline = [];
@@ -72,7 +74,7 @@ function summarise(file, every) {
 const args = process.argv.slice(2);
 const every = args.includes('--every') ? Number(args[args.indexOf('--every') + 1]) : 50;
 const files = args.filter((a, i) => a.endsWith('.replay') || a.endsWith('.public'));
-const out = files.map(f => summarise(f, every));
+const out = files.map(f => summarise(f, every, args.includes('--result-only')));
 if (args.includes('--json')) {
     console.log(JSON.stringify(out, null, 1));
 } else {
