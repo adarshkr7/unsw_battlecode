@@ -28,8 +28,20 @@ require(decoderPath);
 function summarise(file, every, resultOnly) {
     const bytes = fs.readFileSync(file);
     const replay = globalThis.__replay.decode(new Uint8Array(bytes).buffer);
-    if (resultOnly)
-        return { file: path.basename(file), result: replay.result };
+    if (resultOnly) {
+        const at = {};
+        for (const r of atRounds) {
+            const k = Math.min(r, replay.match.maxRound);
+            const row = { A: { alive: 0, total: 0, longest: 0 }, B: { alive: 0, total: 0, longest: 0 } };
+            for (const d of replay.match.roundAt(k).bodies.dragons.values()) {
+                row[d.team].alive++;
+                row[d.team].total += d.body.length;
+                row[d.team].longest = Math.max(row[d.team].longest, d.body.length);
+            }
+            at[r] = row;
+        }
+        return { file: path.basename(file), result: replay.result, at };
+    }
     const match = replay.match;
     const teamOf = new Map();
     const timeline = [];
@@ -72,6 +84,7 @@ function summarise(file, every, resultOnly) {
 }
 
 const args = process.argv.slice(2);
+const atRounds = args.includes('--at') ? args[args.indexOf('--at') + 1].split(',').map(Number) : [];
 const every = args.includes('--every') ? Number(args[args.indexOf('--every') + 1]) : 50;
 const files = args.filter((a, i) => a.endsWith('.replay') || a.endsWith('.public'));
 const out = files.map(f => summarise(f, every, args.includes('--result-only')));

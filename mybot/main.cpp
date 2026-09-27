@@ -75,7 +75,13 @@ struct Brain {
 
     // Consolidation: the ally we would feed, if any.
     int kingTile = -1, kingLen = 0;
+    bool kingVisible = false; // kingTile is its head this turn (else: where we last heard it was)
     std::vector<int> kingDist;
+
+    // Sonar: the best king we have seen or heard of, passed from dragon to dragon.
+    struct KingNews { int id = -1; int tile = -1; int len = 0; int round = -1; };
+    KingNews news;
+    bool amKing = false;
 
     // Hunting: enemy heads we saw recently (a big dragon stays worth chasing for a while).
     struct Sighting { int id; int tile; int len; int round; };
@@ -83,6 +89,7 @@ struct Brain {
     std::vector<int> preyDist; // steps to the nearest enemy head worth trading with
     std::vector<int> othersDist; // moves any other dragon's head needs to reach a tile (bodies block)
     bool aggressive = false;     // we clearly outnumber the enemies around us
+    int unitsNow = 1;            // our team's living dragons this turn
     double preyGain = 0.0;     // what the best such trade is worth
 
     // Our own body, head first. Tracked across turns so we know it beyond the window.
@@ -349,7 +356,35 @@ struct Brain {
 
     // -- own body ------------------------------------------------------------
 
+    bool bodyFromHandoff() {
+        if (!params::HANDOFF)
+            return false;
+        std::vector<int> dirs;
+        for (std::uint64_t m : ct.get_sonar_messages()) {
+            if (!decodeBody(m, dirs) || static_cast<int>(dirs.size()) + 1 > ct.get_length())
+                continue;
+            std::deque<int> built{idxOf(ct.get_position())};
+            bool ok = true;
+            for (int d : dirs) {
+                int const next = nbr[built.back() * 4 + d];
+                if (next < 0 || (inView[next] && occId[next] != myId)) {
+                    ok = false;
+                    break;
+                }
+                built.push_back(next);
+            }
+            if (ok) {
+                body = std::move(built);
+                haveBody = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
     void rebuildBodyFromView() {
+        if (!haveBody && bodyFromHandoff())
+            return;
         int const head = idxOf(ct.get_position());
         struct Part { int tile; int dir; bool used; };
         std::vector<Part> parts;
@@ -464,6 +499,7 @@ struct Brain {
         bool eats = false;
         int space = 0;
         bool safe = false; // can reach its own freed body (tail-follow) or has lots of room
+        bool dive = false; // unsafe, but into a pocket with pearls we can split our way out of
         int newLength = 0;
         double score = -1e18;
     };
@@ -522,7 +558,7 @@ struct Brain {
         visit(dest, 0);
         owned[dest] = 1;
         queue[qt++] = dest;
-        double best = 0.0, sum = 0.0;
+        double best = 0.0, sum = 0.0, pocket = 0.0;
         while (qh < qt) {
             int const t = queue[qh++];
             int const k = dist[t];
@@ -536,6 +572,7 @@ struct Brain {
                         v *= params::ALLY_CLOSER;
                     best = std::max(best, v * powBest[k]);
                     sum += v * powSum[k];
+                    pocket += v;
                 }
             }
             for (int d = 0; d < 4; d++) {
@@ -556,7 +593,14 @@ struct Brain {
         c.safe = reachedOwn || room >= roomyEnough(newLength);
         score += params::FOOD_BEST * best + params::FOOD_SUM * sum;
 
-        if (!c.safe)
+        // A small dragon may dive into a dead end for its pearls: once it is at least 4 long it
+        // splits its way out (the child's head starts at the tail, facing the exit), losing only
+        // the stuck parent. Bigger dragons and empty pockets stay off limits.
+        c.dive = !c.safe && newLength <= params::DIVE_MAX_LEN && pocket >= params::DIVE_MIN_POCKET &&
+                 newLength + pocket >= 4.0;
+        if (c.dive)
+            score -= params::DIVE_PENALTY;
+        else if (!c.safe)
             score -= params::TRAPPED - 50.0 * std::min(c.space, newLength);
         else
             score += 0.5 * std::min(c.space, 3 * newLength);
@@ -567,10 +611,15 @@ struct Brain {
         // An enemy that can reach dest next turn may trade heads with us.
         if (threatLen[dest] < INF) {
             int const disadvantage = newLength - threatLen[dest];
-            score -= disadvantage > 0 ? params::THREAT_PER_LEN * disadvantage : params::THREAT_EVEN;
+            double penalty = disadvantage > 0 ? params::THREAT_PER_LEN * disadvantage : params::THREAT_EVEN;
+            if (unitsNow <= params::LOW_UNITS)
+                penalty = std::max(penalty, params::THREAT_LOW_UNITS);
+            score -= penalty;
         }
         if (kingTile >= 0 && kingDist[dest] < INF)
-            score += params::FEED_ATTRACT / (1.0 + kingDist[dest]);
+            score += params::FEED_PULL_LINEAR
+                         ? params::FEED_ATTRACT - params::FEED_PULL_PER_STEP * std::min(kingDist[dest], 60)
+                         : params::FEED_ATTRACT / (1.0 + kingDist[dest]);
         if (preyGain > 0.0 && preyDist[dest] < INF)
             score += (aggressive ? params::HUNT_ATTRACT_AGGRO : params::HUNT_ATTRACT) *
                      std::min(preyGain, params::HUNT_GAIN_CAP) / (1.0 + preyDist[dest]);
@@ -640,6 +689,27 @@ struct Brain {
         bool const childSafe = floodSafe(body[length - 1], child);
         restoreBlock();
 
+        // A stuck child of 4+ can split again on its own first turn: that grandchild is the
+        // child's rear, head at the child's tail (our body[parentLen]), so a chain of splits
+        // lets a piece out from the middle of a body whose both ends sit in dead ends.
+        int chained = 0;
+        if (!childSafe && child >= 4) {
+            int const grand = child - 2;
+            ++ownScenario;
+            for (int i = 0; i < length; i++) {
+                bool const inGrand = i >= parentLen && i < parentLen + grand;
+                // The grandchild frees from its tail (body[parentLen + grand - 1]); the rest waits.
+                int const release = inGrand ? (parentLen + grand - 1 - i) + 2 : length + 3;
+                raiseBlock(body[i], release);
+                if (inGrand)
+                    ownStamp[body[i]] = ownScenario;
+            }
+            raiseBlock(body[parentLen], INF);
+            if (floodSafe(body[parentLen], grand))
+                chained = grand;
+            restoreBlock();
+        }
+
         ++ownScenario;
         for (int i = 0; i < parentLen; i++) {
             raiseBlock(body[i], (parentLen - 1 - i) + 2);
@@ -651,7 +721,7 @@ struct Brain {
         bool const parentSafe = floodSafe(body[0], parentLen);
         restoreBlock();
 
-        return (childSafe ? child : 0) + (parentSafe ? parentLen : 0);
+        return (childSafe ? child : chained) + (parentSafe ? parentLen : 0);
     }
 
     double heat(int t) const {
@@ -706,6 +776,8 @@ struct Brain {
         if (units <= 1)
             return -1.0; // our last dragon: trading it loses the game
         int const gain = enemyLen - myLen;
+        if (units <= params::LOW_UNITS)
+            return gain >= params::LOW_UNITS_TRADE_GAIN ? gain : -1.0; // elimination is close
         if (gain > 0)
             return gain;
         // Even trades thin both swarms; worth it while we have dragons to spare, or when we
@@ -801,10 +873,105 @@ struct Brain {
             bfsFrom(prey, preyDist, nullptr);
     }
 
+    // -- sonar ---------------------------------------------------------------
+    // A king beacon is 64 bits: [check 16][type 3][x 7][y 7][len 10][round 9][id 12]. The check
+    // is keyed, so enemies who hear our pings (they stop at the first dragon, of either team)
+    // cannot forge them without the key.
+    static std::uint64_t mix(std::uint64_t z) {
+        z += 0x9E3779B97F4A7C15ULL;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+        return z ^ (z >> 31);
+    }
+    static std::uint64_t checkOf(std::uint64_t payload) { return mix(payload ^ params::SONAR_KEY) & 0xFFFF; }
+
+    std::uint64_t encodeKing(KingNews const& k) const {
+        std::uint64_t const payload =
+            (1ULL << 45) | (static_cast<std::uint64_t>(k.tile % W) << 38) |
+            (static_cast<std::uint64_t>(k.tile / W) << 31) | (static_cast<std::uint64_t>(std::min(k.len, 1023)) << 21) |
+            (static_cast<std::uint64_t>(k.round & 511) << 12) | static_cast<std::uint64_t>(k.id & 4095);
+        return (checkOf(payload) << 48) | payload;
+    }
+
+    bool decodeKing(std::uint64_t m, KingNews& k) const {
+        std::uint64_t const payload = m & ((1ULL << 48) - 1);
+        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 1)
+            return false;
+        int const x = static_cast<int>((payload >> 38) & 127), y = static_cast<int>((payload >> 31) & 127);
+        if (x >= W || y >= H)
+            return false;
+        k.tile = idxOf(x, y);
+        k.len = static_cast<int>((payload >> 21) & 1023);
+        k.round = static_cast<int>((payload >> 12) & 511);
+        k.id = static_cast<int>(payload & 4095);
+        return k.round <= round;
+    }
+
+    // Split handoff: [check 16][type 3 = 2][count 5][2 bits per segment, up to 20]. The parent
+    // sends it out of its tail on the split turn; it lands on the child's tail, so the child
+    // knows its whole body on its first turn, even the part out of view.
+    static constexpr int HANDOFF_MAX = 20;
+
+    std::uint64_t encodeBody(std::vector<int> const& dirs) const {
+        int const count = std::min<int>(static_cast<int>(dirs.size()), HANDOFF_MAX);
+        std::uint64_t payload = (2ULL << 45) | (static_cast<std::uint64_t>(count) << 40);
+        for (int i = 0; i < count; i++)
+            payload |= static_cast<std::uint64_t>(dirs[i] & 3) << (2 * i);
+        return (checkOf(payload) << 48) | payload;
+    }
+
+    bool decodeBody(std::uint64_t m, std::vector<int>& dirs) const {
+        std::uint64_t const payload = m & ((1ULL << 48) - 1);
+        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 2)
+            return false;
+        int const count = static_cast<int>((payload >> 40) & 31);
+        if (count > HANDOFF_MAX)
+            return false;
+        dirs.clear();
+        for (int i = 0; i < count; i++)
+            dirs.push_back(static_cast<int>((payload >> (2 * i)) & 3));
+        return true;
+    }
+
+    static bool bigger(KingNews const& a, KingNews const& b) {
+        return a.len > b.len || (a.len == b.len && a.id < b.id);
+    }
+
+    void consider(KingNews const& k) {
+        if (k.id == (myId & 4095) || round - k.round > params::KING_FRESH)
+            return;
+        if (news.id < 0 || (k.id == news.id && k.round >= news.round) || bigger(k, news))
+            news = k;
+    }
+
+    // Take in what we heard and saw, decide whether we are the king, and pass the news on.
+    void sonarTurn(int length) {
+        if (!params::SONAR)
+            return;
+        if (news.id >= 0 && round - news.round > params::KING_FRESH)
+            news = {};
+        for (std::uint64_t m : ct.get_sonar_messages()) {
+            KingNews k;
+            if (decodeKing(m, k))
+                consider(k);
+        }
+        for (auto const& a : allyHeads)
+            consider({a.id & 4095, a.tile, a.len, round});
+        if (round < params::CONSOLIDATE_ROUND - params::BEACON_LEAD)
+            return;
+        KingNews const me{myId & 4095, body.front(), length, round};
+        amKing = news.id < 0 || bigger(me, news);
+        KingNews const& say = amKing ? me : news;
+        std::uint64_t const message = encodeKing(say);
+        for (auto const direction : Direction::get_direction_list())
+            ct.send_sonar(direction, message);
+    }
+
     // Late game: the longest ally in view that we should feed, if any.
     void chooseKing(int length, int units) {
         kingTile = -1;
         kingLen = 0;
+        kingVisible = false;
         if (round < params::CONSOLIDATE_ROUND || units <= params::FEED_KEEP_UNITS)
             return;
         // Any ally bigger than us (ties to the lower id) is a king: feeding it makes it bigger
@@ -819,13 +986,19 @@ struct Brain {
                 kingId = a.id;
             }
         }
+        kingVisible = kingTile >= 0;
+        if (!kingVisible && params::SONAR && news.id >= 0 && !amKing && news.len >= length + params::FEED_MARGIN &&
+            (news.len > length || news.id < (myId & 4095))) {
+            kingTile = news.tile;
+            kingLen = news.len;
+        }
         if (kingTile >= 0)
             bfsFrom({{-1, kingTile, kingLen}}, kingDist, nullptr);
     }
 
     // Die next to the king: our body becomes pearls right where it is about to go.
     bool tryFeed() {
-        if (kingTile < 0 || kingDist[body.front()] > params::FEED_DIST)
+        if (kingTile < 0 || !kingVisible || kingDist[body.front()] > params::FEED_DIST)
             return false;
         ct.do_split(1); // an illegal split: we die with no valid action
         plannedPath.clear();
@@ -836,11 +1009,17 @@ struct Brain {
     // Swarm phase: split in half whenever long enough and both halves are safe.
     bool trySwarmSplit(int length, int units, Candidate const& best, bool bodyKnown) {
         if (round >= params::CONSOLIDATE_ROUND || length < params::SWARM_SPLIT_LEN || !bodyKnown ||
-            units >= game.get_unit_limit() || best.eats)
+            units >= game.get_unit_limit() || (best.eats && !params::SPLIT_WHILE_EATING))
             return false;
         int const child = length / 2;
-        // The parent stands still for a turn, so not where an enemy head can reach it.
-        if (!ct.can_split(child) || threatLen[body.front()] < INF || splitValue(child) != length)
+        if (!ct.can_split(child))
+            return false;
+        // The parent stands still for a turn: by default not where an enemy head can reach it.
+        if (threatLen[body.front()] < INF && !params::SPLIT_THREAT_OK)
+            return false;
+        // Safety 2: both halves safe. Safety 1: at most a 2-segment piece may be lost.
+        int const needed = params::SPLIT_SAFETY >= 2 ? length : length - 2;
+        if (splitValue(child) < needed)
             return false;
         split(child);
         ct.set_indicator_string("swarm split");
@@ -858,6 +1037,22 @@ struct Brain {
     void split(int child) {
         ct.do_split(child);
         plannedPath.clear(); // the parent stays put
+        // Hand the child its body: from its head (our tail) towards our new tail.
+        int const length = static_cast<int>(body.size());
+        if (params::HANDOFF && length == ct.get_length() && child <= length && length - child >= 1) {
+            std::vector<int> dirs;
+            for (int i = length - 1; i > length - child; i--) {
+                int found = -1;
+                for (int d = 0; d < 4; d++)
+                    if (nbr[body[i] * 4 + d] == body[i - 1])
+                        found = d;
+                if (found < 0)
+                    return;
+                dirs.push_back(found);
+            }
+            // Sent against our heading, a ping leaves through our tail, straight into the child.
+            ct.send_sonar(ct.get_dir().get_opposite(), encodeBody(dirs));
+        }
     }
 
     void turn() {
@@ -886,9 +1081,11 @@ struct Brain {
         blockSaved.clear();
 
         int const units = ct.get_unit_count();
+        unitsNow = units;
         aggressive = units >= params::AGGRO_MIN_UNITS && !enemyHeads.empty() &&
                      static_cast<double>(allyHeads.size() + 1) >= params::AGGRO_RATIO * enemyHeads.size();
         computeThreats();
+        sonarTurn(length);
         chooseKing(length, units);
         choosePrey(length, units);
 
@@ -920,7 +1117,7 @@ struct Brain {
 
         // Trapped (or worse): compare moving on with every split, by length expected to survive.
         bool const bodyKnown = static_cast<int>(body.size()) == length;
-        if ((!best || !best->safe) && canSplit && bodyKnown) {
+        if ((!best || (!best->safe && !best->dive)) && canSplit && bodyKnown) {
             // An unsafe move buys time, which is worth a little in case others move away.
             double moveValue = 0.0;
             if (best)

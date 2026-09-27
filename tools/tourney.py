@@ -126,7 +126,8 @@ def main() -> None:
     if args.replays:
         replay_tmp = ROOT / args.replays / "_tmp"
     elif not args.no_longest:
-        replay_tmp = ROOT / "results" / "tourney_tmp"
+        # One folder per run, so runs side by side do not delete each other's replays.
+        replay_tmp = ROOT / "results" / f"tourney_tmp_{os.getpid()}"
     if replay_tmp:
         shutil.rmtree(replay_tmp, ignore_errors=True)
         replay_tmp.mkdir(parents=True, exist_ok=True)
@@ -160,11 +161,12 @@ def main() -> None:
         longest = {}
         for i in range(0, len(files), 40):
             chunk = files[i:i + 40]
-            done = subprocess.run(["node", str(ROOT / "tools" / "replay.cjs"), "--json", "--result-only", *chunk],
+            done = subprocess.run(["node", str(ROOT / "tools" / "replay.cjs"), "--json", "--result-only",
+                                   "--at", "50,150", *chunk],
                                   capture_output=True, text=True, cwd=ROOT)
             if done.returncode == 0:
                 for item in json.loads(done.stdout):
-                    longest[item["file"]] = item["result"]
+                    longest[item["file"]] = dict(item["result"], at=item.get("at", {}))
             else:
                 print(f"replay decoding failed: {done.stderr.strip()[:300]}")
                 break
@@ -172,6 +174,7 @@ def main() -> None:
             res = longest.get(pathlib.Path(r["replay"]).name) if r.get("replay") else None
             if res:
                 r["longest"] = {"A": res["teamA"]["longestDragon"], "B": res["teamB"]["longestDragon"]}
+                r["early"] = res.get("at", {})
 
     # Tally from bot1's point of view.
     per_map = collections.OrderedDict((n, collections.Counter()) for n in names)
@@ -181,6 +184,7 @@ def main() -> None:
     lengths = {1: [], 2: []}
     dragons = {1: [], 2: []}
     longs = {1: [], 2: []}
+    early = {k: {r: {"alive": [], "total": []} for r in ("50", "150")} for k in (1, 2)}
     reasons = collections.Counter()
     for r in results:
         team1 = r["bot1_team"]
@@ -188,6 +192,11 @@ def main() -> None:
         if r.get("longest"):
             for team, k in team_of.items():
                 longs[k].append(r["longest"][team])
+        for rnd, row in (r.get("early") or {}).items():
+            if rnd in ("50", "150"):
+                for team, k in team_of.items():
+                    early[k][rnd]["alive"].append(row[team]["alive"])
+                    early[k][rnd]["total"].append(row[team]["total"])
         if r["ok"]:
             won = "W" if r["winner"] == team1 else "D" if r["winner"] == "draw" else "L"
             reasons[(won, "elim" if "elimination" in r["reason"] else "length")] += 1
@@ -225,6 +234,15 @@ def main() -> None:
 
     if reasons:
         print("bot1 results by how games ended: " + ", ".join(f"{w} {how} {n}" for (w, how), n in sorted(reasons.items())))
+    for k, label in ((1, args.bot1), (2, args.bot2)):
+        parts = []
+        for rnd in ("50", "150"):
+            e = early[k][rnd]
+            if e["alive"]:
+                parts.append(f"R{rnd}: {sum(e['alive']) / len(e['alive']):.1f} dragons, "
+                             f"total {sum(e['total']) / len(e['total']):.1f}")
+        if parts:
+            print(f"early game {label}: " + "   ".join(parts))
     for k, label in ((1, args.bot1), (2, args.bot2)):
         if longs[k]:
             print(f"longest dragon at the end {label}: mean {sum(longs[k]) / len(longs[k]):.1f}")
