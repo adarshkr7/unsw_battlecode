@@ -49,6 +49,7 @@ struct Brain {
     std::vector<int> lastSeen, nextSpawn, visitRound;
     std::vector<double> visitHeat; // how recently and often our head stood here (breaks loops)
     std::vector<uint8_t> pearlSeen;
+    std::vector<uint8_t> heard; // our pearl knowledge of the tile came over sonar, not our eyes
 
     // This turn's view.
     std::vector<uint8_t> inView, pearlNow;
@@ -118,6 +119,7 @@ struct Brain {
         lastSeen.assign(N, -1);
         nextSpawn.assign(N, -1);
         pearlSeen.assign(N, 0);
+        heard.assign(N, 0);
         visitRound.assign(N, 0);
         visitHeat.assign(N, 0.0);
         inView.assign(N, 0);
@@ -242,6 +244,7 @@ struct Brain {
             pearlNow[t] = tile.has_pearl() ? 1 : 0;
             lastSeen[t] = round;
             pearlSeen[t] = pearlNow[t];
+            heard[t] = 0;
             int const pt = tile.get_pearl_time();
             if (pt < 0) {
                 K.maxGap[t] = 0;
@@ -466,14 +469,19 @@ struct Brain {
                 return 1.0;
             if (nextSpawn[t] >= 0 && arrival >= nextSpawn[t])
                 return 0.9;
+            // Early for a known spawn: worth hanging around for, discounted by the wait.
+            if (nextSpawn[t] >= 0 && params::FUTURE_WAIT_GAMMA > 0.0)
+                return 0.9 * std::pow(params::FUTURE_WAIT_GAMMA, nextSpawn[t] - arrival);
             return 0.0;
         }
         if (lastSeen[t] >= 0) {
             int const age = round - lastSeen[t];
             if (pearlSeen[t])
-                return decayPow[std::min(age, Constants::MAX_ROUNDS)];
+                return decayPow[std::min(age, Constants::MAX_ROUNDS)] * (heard[t] ? params::HEARD_VALUE : 1.0);
             if (nextSpawn[t] >= 0 && arrival >= nextSpawn[t])
                 return 0.85 * decayPow[std::clamp(round - nextSpawn[t], 0, Constants::MAX_ROUNDS)];
+            if (nextSpawn[t] >= 0 && params::FUTURE_WAIT_GAMMA > 0.0)
+                return 0.85 * std::pow(params::FUTURE_WAIT_GAMMA, nextSpawn[t] - arrival);
             return 0.0;
         }
         // Never seen: the initial countdown is uniform on [minGap, maxGap].
@@ -933,6 +941,71 @@ struct Brain {
         return true;
     }
 
+    // Pearl news: [check 16][type 3 = 3][round 9][three tiles, 12 bits each as x<<6|y]. Empty
+    // slots repeat the first tile. Only maps up to 64x64, which is every legal map.
+    std::uint64_t encodePearls(int seenRound, int const* tiles, int count) const {
+        auto pos = [&](int t) { return static_cast<std::uint64_t>(((t % W) << 6) | (t / W)); };
+        std::uint64_t payload = (3ULL << 45) | (static_cast<std::uint64_t>(seenRound & 511) << 36);
+        for (int i = 0; i < 3; i++)
+            payload |= pos(tiles[i < count ? i : 0]) << (24 - 12 * i);
+        return (checkOf(payload) << 48) | payload;
+    }
+
+    bool decodePearls(std::uint64_t m, int& seenRound, int* tiles) const {
+        std::uint64_t const payload = m & ((1ULL << 48) - 1);
+        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 3)
+            return false;
+        seenRound = static_cast<int>((payload >> 36) & 511);
+        if (seenRound > round)
+            return false;
+        for (int i = 0; i < 3; i++) {
+            int const v = static_cast<int>((payload >> (24 - 12 * i)) & 4095);
+            int const x = v >> 6, y = v & 63;
+            if (x >= W || y >= H)
+                return false;
+            tiles[i] = idxOf(x, y);
+        }
+        return true;
+    }
+
+    // Share pearls: what we see now first, then the freshest we have heard of. Each ping reaches
+    // the first dragon in its line; allies pass it on, so news crosses the map in a few turns.
+    void pearlSonar() {
+        if (!params::PEARL_SONAR)
+            return;
+        for (std::uint64_t m : ct.get_sonar_messages()) {
+            int seenRound, tiles[3];
+            if (!decodePearls(m, seenRound, tiles))
+                continue;
+            for (int t : tiles) {
+                // What we saw ourselves is never overridden by older news.
+                if (lastSeen[t] < seenRound && K.maxGap[t] != 0) {
+                    lastSeen[t] = seenRound;
+                    pearlSeen[t] = 1;
+                    heard[t] = 1;
+                }
+            }
+        }
+        std::vector<int> share;
+        for (int t = 0; t < N; t++)
+            if (pearlSeen[t] && lastSeen[t] >= 0 && round - lastSeen[t] <= params::PEARL_RELAY_AGE &&
+                (params::PEARL_RELAY || !heard[t]))
+                share.push_back(t);
+        if (share.empty())
+            return;
+        std::sort(share.begin(), share.end(), [&](int a, int b) { return lastSeen[a] > lastSeen[b]; });
+        int const n = std::min<int>(static_cast<int>(share.size()), 12);
+        int const directions = (n + 2) / 3;
+        for (int k = 0; k < directions; k++) {
+            int const count = std::min(3, n - 3 * k);
+            int const* tiles = share.data() + 3 * k;
+            int oldest = round;
+            for (int i = 0; i < count; i++)
+                oldest = std::min(oldest, lastSeen[tiles[i]]);
+            ct.send_sonar(Direction(DCH[k]), encodePearls(oldest, tiles, count));
+        }
+    }
+
     static bool bigger(KingNews const& a, KingNews const& b) {
         return a.len > b.len || (a.len == b.len && a.id < b.id);
     }
@@ -1086,6 +1159,7 @@ struct Brain {
                      static_cast<double>(allyHeads.size() + 1) >= params::AGGRO_RATIO * enemyHeads.size();
         computeThreats();
         sonarTurn(length);
+        pearlSonar();
         chooseKing(length, units);
         choosePrey(length, units);
 

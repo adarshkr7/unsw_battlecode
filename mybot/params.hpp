@@ -63,6 +63,11 @@ inline constexpr double FEED_PULL_PER_STEP = 40.0; // ...minus this per step awa
 inline constexpr bool SONAR = false; // king beacons: off (tested neutral)
 // On a split, hand the child its body over sonar (out of our tail, into its tail).
 inline constexpr bool HANDOFF = true;
+// Share pearl sightings over sonar, and relay what we heard for this many rounds.
+inline constexpr bool PEARL_SONAR = false; // off: tested neutral vs v2d (49-54%)
+inline constexpr int PEARL_RELAY_AGE = 20;
+inline constexpr bool PEARL_RELAY = true;   // also pass on pearls we only heard about
+inline constexpr double HEARD_VALUE = 1.0; // belief scale for pearls we only heard about
 inline constexpr int BEACON_LEAD = 20;
 inline constexpr int KING_FRESH = 12; // rounds heard news stays usable
 inline constexpr unsigned long long SONAR_KEY = 0x5DEECE66DA11E4EDULL;
@@ -96,5 +101,7 @@ inline constexpr double ALLY_CLOSER = 0.25;      // an ally reaches it first
 inline constexpr double REMEMBERED_DECAY = 0.97; // per round a remembered pearl may have been eaten
 inline constexpr double UNSEEN_PRIOR = 0.6;      // scale on "has probably spawned by now" for unseen tiles
 inline constexpr int UNKNOWN_MAP_GAP = 150;      // assumed mean spawn gap when the map is unknown
+// A known spawn we would reach early still counts, discounted per round of waiting (0 = off).
+inline constexpr double FUTURE_WAIT_GAMMA = 0.0; // 0.7 and 0.85 both lost 42% to v2d
 
 } // namespace params
