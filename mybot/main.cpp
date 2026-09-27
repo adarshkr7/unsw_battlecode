@@ -1,11 +1,16 @@
-// AllRed v1: map knowledge + survival + greedy growth.
+// AllRed v2: a swarm that consolidates.
 //
 // Each turn: fold the 7x7 view into long-lived knowledge (edges, pearl timers, the
-// embedded map if we recognised it), then score the four moves. A move is fatal if it
-// hits kelp or any dragon; otherwise it is scored on pearls reachable from it (a
-// belief model over every tile, discounted by distance and by who gets there first),
-// on the space left to us (time-aware flood fill, since our own body frees up as we
-// move), and on head-to-head risk from adjacent enemy heads.
+// embedded map if we recognised it), then decide, in order:
+//   1. strike: a head trade worth taking, by a move or a sprint (both dragons die);
+//   2. survive: when every move traps us, split so the most length lives on;
+//   3. feed: late in the game a small dragon dies next to a much longer ally, whose
+//      pearl-seeking then eats what it drops, so we finish with one long dragon;
+//   4. swarm: early on, split in half whenever long enough, up to the dragon cap;
+//   5. otherwise the best-scoring move: pearls reachable (a belief over every tile,
+//      discounted by distance and by who gets there first), room to keep moving
+//      (a timed flood fill that knows when every visible body frees up), and the
+//      head trades enemies could force on us next turn.
 
 #include "board.hpp"
 #include "helper.hpp"
@@ -54,8 +59,23 @@ struct Brain {
     std::vector<int> releaseAt; // other dragons' tiles: our move number at which the tile frees (INF unknown)
     std::vector<int> nbr; // nbr[t*4+d]
 
-    struct Head { int id; int tile; };
+    // Other dragons in view this turn.
+    struct Seen {
+        int id;
+        char team;
+        int head = -1;     // head tile, if in view
+        int visible = 0;   // segments in view
+        int knownLen = -1; // exact length, when both ends are in view
+        int len() const { return knownLen > 0 ? knownLen : std::max(2, visible); }
+    };
+    std::vector<Seen> dragons;
+    struct Head { int id; int tile; int len; };
     std::vector<Head> enemyHeads, allyHeads;
+    std::vector<int> threatLen; // shortest enemy able to put its head on this tile next turn (INF: none)
+
+    // Consolidation: the ally we would feed, if any.
+    int kingTile = -1, kingLen = 0;
+    std::vector<int> kingDist;
 
     // Our own body, head first. Tracked across turns so we know it beyond the window.
     std::deque<int> body;
@@ -63,7 +83,7 @@ struct Brain {
     bool haveBody = false;
 
     // Scratch.
-    std::vector<int> distE, distA, ownerA, block, dist, queue, staticBlock, seen;
+    std::vector<int> distE, distA, ownerA, block, dist, queue, staticBlock, seen, from, fromDir;
     std::vector<std::pair<int, int>> blockSaved;
     int stamp = 0;
     std::vector<int> ownStamp; // == ownScenario for tiles of our own body in the current scenario
@@ -99,6 +119,10 @@ struct Brain {
         staticBlock.assign(N, 0);
         dist.assign(N, INF);
         seen.assign(N, 0);
+        from.assign(N, -1);
+        fromDir.assign(N, 0);
+        threatLen.assign(N, INF);
+        kingDist.assign(N, INF);
         ownStamp.assign(N, 0);
         queue.assign(N, 0);
         powBest.resize(N + 2);
@@ -189,6 +213,7 @@ struct Brain {
         std::fill(pearlNow.begin(), pearlNow.end(), 0);
         std::fill(occId.begin(), occId.end(), -1);
         std::fill(occHead.begin(), occHead.end(), 0);
+        dragons.clear();
         enemyHeads.clear();
         allyHeads.clear();
 
@@ -214,11 +239,11 @@ struct Brain {
                 occTeam[t] = part->get_team().value;
                 occHead[t] = part->is_head() ? 1 : 0;
                 occDir[t] = static_cast<int8_t>(dirIndex(part->get_dir()));
-                if (part->is_head() && part->get_id() != myId) {
-                    if (part->get_team().value == myTeam)
-                        allyHeads.push_back({part->get_id(), t});
-                    else
-                        enemyHeads.push_back({part->get_id(), t});
+                if (part->get_id() != myId) {
+                    Seen& d = dragonEntry(part->get_id(), part->get_team().value);
+                    d.visible++;
+                    if (part->is_head())
+                        d.head = t;
                 }
             }
         }
@@ -239,6 +264,24 @@ struct Brain {
             for (int d = 0; d < 4; d++)
                 nbr[t * 4 + d] = computeStep(t, d);
         computeOthersRelease();
+        for (auto const& d : dragons)
+            if (d.head >= 0)
+                (d.team == myTeam ? allyHeads : enemyHeads).push_back({d.id, d.head, d.len()});
+    }
+
+    Seen& dragonEntry(int id, char team) {
+        for (auto& d : dragons)
+            if (d.id == id)
+                return d;
+        dragons.push_back({id, team});
+        return dragons.back();
+    }
+
+    int lengthOf(int id) const {
+        for (auto const& d : dragons)
+            if (d.id == id)
+                return d.len();
+        return 2;
     }
 
     // For other dragons whose tail we can see, when each of their tiles frees up. A dragon
@@ -280,6 +323,13 @@ struct Brain {
             int cur = rear;
             for (int j = 0; cur >= 0 && occId[cur] == id && j < N; j++) {
                 releaseAt[cur] = j + 2;
+                if (occHead[cur]) {
+                    // Tail to head all in view: we know its exact length.
+                    for (auto& d : dragons)
+                        if (d.id == id)
+                            d.knownLen = j + 1;
+                    break;
+                }
                 cur = towardHead(cur);
             }
         }
@@ -492,14 +542,13 @@ struct Brain {
         else
             score += 0.5 * std::min(c.space, 3 * newLength);
 
-        for (auto const& e : enemyHeads) {
-            for (int d = 0; d < 4; d++) {
-                if (nbr[e.tile * 4 + d] == dest) {
-                    score -= params::HEAD_ADJ_BASE + params::HEAD_ADJ_PER_LEN * length;
-                    d = 4;
-                }
-            }
+        // An enemy that can reach dest next turn may trade heads with us.
+        if (threatLen[dest] < INF) {
+            int const disadvantage = newLength - threatLen[dest];
+            score -= disadvantage > 0 ? params::THREAT_PER_LEN * disadvantage : params::THREAT_EVEN;
         }
+        if (kingTile >= 0 && kingDist[dest] < INF)
+            score += params::FEED_ATTRACT / (1.0 + kingDist[dest]);
         score += std::uniform_real_distribution<double>(0.0, 1.0)(rng);
         c.score = score;
     }
@@ -600,6 +649,146 @@ struct Brain {
         return false;
     }
 
+    // For every tile, the shortest enemy that could put its head there before our next turn
+    // (a length-L dragon can sprint L-1 steps, through tiles that are free now).
+    void computeThreats() {
+        std::fill(threatLen.begin(), threatLen.end(), INF);
+        for (auto const& e : enemyHeads) {
+            int const reach = std::clamp(e.len - 1, 1, params::STRIKE_MAX_STEPS);
+            newSearch();
+            int qh = 0, qt = 0;
+            visit(e.tile, 0);
+            queue[qt++] = e.tile;
+            while (qh < qt) {
+                int const t = queue[qh++];
+                int const k = dist[t];
+                if (k >= reach)
+                    continue;
+                for (int d = 0; d < 4; d++) {
+                    int const n = nbr[t * 4 + d];
+                    if (n < 0 || seen[n] == stamp || (inView[n] && occId[n] >= 0))
+                        continue;
+                    visit(n, k + 1);
+                    queue[qt++] = n;
+                    threatLen[n] = std::min(threatLen[n], e.len);
+                }
+            }
+        }
+    }
+
+    // What a head trade is worth to us: positive means take it.
+    double tradeGain(int enemyLen, int myLen, int units) const {
+        if (units <= 1)
+            return -1.0; // our last dragon: trading it loses the game
+        int const gain = enemyLen - myLen;
+        if (gain > 0)
+            return gain;
+        // Even trades thin both swarms; worth it while we have dragons to spare.
+        if (gain == 0 && round < params::CONSOLIDATE_ROUND && units >= params::TRADE_MIN_UNITS)
+            return 0.5;
+        return -1.0;
+    }
+
+    // Reach an enemy head this turn, by one move or a sprint through free tiles in view.
+    bool tryStrike(int length, int units) {
+        int const maxSteps = std::min(length - 1, params::STRIKE_MAX_STEPS);
+        if (enemyHeads.empty() || maxSteps < 1)
+            return false;
+        int const head = body.front();
+        int target = -1, lastFrom = -1, lastDir = -1, steps = INF;
+        double bestGain = 0.0;
+        newSearch();
+        int qh = 0, qt = 0;
+        visit(head, 0);
+        queue[qt++] = head;
+        while (qh < qt) {
+            int const t = queue[qh++];
+            int const k = dist[t];
+            if (k >= maxSteps)
+                continue;
+            for (int d = 0; d < 4; d++) {
+                int const n = nbr[t * 4 + d];
+                if (n < 0 || !inView[n])
+                    continue;
+                if (occId[n] >= 0) {
+                    if (occHead[n] && occTeam[n] != myTeam) {
+                        double const g = tradeGain(lengthOf(occId[n]), length, units);
+                        if (g > 0.0 && (g > bestGain || (g == bestGain && k + 1 < steps))) {
+                            target = n;
+                            lastFrom = t;
+                            lastDir = d;
+                            steps = k + 1;
+                            bestGain = g;
+                        }
+                    }
+                    continue;
+                }
+                if (seen[n] == stamp)
+                    continue;
+                visit(n, k + 1);
+                from[n] = t;
+                fromDir[n] = d;
+                queue[qt++] = n;
+            }
+        }
+        if (target < 0)
+            return false;
+        std::vector<Direction> dirs{Direction(DCH[lastDir])};
+        for (int cur = lastFrom; cur != head; cur = from[cur])
+            dirs.push_back(Direction(DCH[fromDir[cur]]));
+        std::reverse(dirs.begin(), dirs.end());
+        ct.make_moves(dirs);
+        plannedPath.clear();
+        ct.set_indicator_string("strike " + std::to_string(steps));
+        return true;
+    }
+
+    // Late game: the longest ally in view that we should feed, if any.
+    void chooseKing(int length, int units) {
+        kingTile = -1;
+        kingLen = 0;
+        if (round < params::CONSOLIDATE_ROUND || units <= params::FEED_KEEP_UNITS)
+            return;
+        // Any ally bigger than us (ties to the lower id) is a king: feeding it makes it bigger
+        // still, so feeders converge on one dragon instead of all waiting for a big one.
+        int kingId = myId;
+        for (auto const& a : allyHeads) {
+            bool const bigger = a.len > length || (a.len == length && a.id < myId);
+            bool const better = a.len > kingLen || (a.len == kingLen && a.id < kingId);
+            if (bigger && better && a.len >= length + params::FEED_MARGIN) {
+                kingTile = a.tile;
+                kingLen = a.len;
+                kingId = a.id;
+            }
+        }
+        if (kingTile >= 0)
+            bfsFrom({{-1, kingTile, kingLen}}, kingDist, nullptr);
+    }
+
+    // Die next to the king: our body becomes pearls right where it is about to go.
+    bool tryFeed() {
+        if (kingTile < 0 || kingDist[body.front()] > params::FEED_DIST)
+            return false;
+        ct.do_split(1); // an illegal split: we die with no valid action
+        plannedPath.clear();
+        ct.set_indicator_string("feed");
+        return true;
+    }
+
+    // Swarm phase: split in half whenever long enough and both halves are safe.
+    bool trySwarmSplit(int length, int units, Candidate const& best, bool bodyKnown) {
+        if (round >= params::CONSOLIDATE_ROUND || length < params::SWARM_SPLIT_LEN || !bodyKnown ||
+            units >= game.get_unit_limit() || best.eats)
+            return false;
+        int const child = length / 2;
+        // The parent stands still for a turn, so not where an enemy head can reach it.
+        if (!ct.can_split(child) || threatLen[body.front()] < INF || splitValue(child) != length)
+            return false;
+        split(child);
+        ct.set_indicator_string("swarm split");
+        return true;
+    }
+
     void move(int d) {
         ct.make_move(Direction(DCH[d]));
         int const dest = nbr[body.front() * 4 + d];
@@ -633,6 +822,10 @@ struct Brain {
         block = staticBlock;
         blockSaved.clear();
 
+        int const units = ct.get_unit_count();
+        computeThreats();
+        chooseKing(length, units);
+
         Candidate cands[4];
         for (int d = 0; d < 4; d++) {
             cands[d].dir = d;
@@ -650,8 +843,11 @@ struct Brain {
                 s += " ";
             }
             ct.output_log("R", round, "at", body.front() % W, body.front() / W, "len", length, "body", body.size(),
-                          "known", K.fromMap, "|", s);
+                          "units", units, "king", kingLen, "|", s);
         }
+
+        if (tryStrike(length, units))
+            return;
 
         bool const canSplit = ct.can_split(length / 2);
         int const head = body.front();
@@ -706,6 +902,9 @@ struct Brain {
             return;
         }
 
+        if (tryFeed())
+            return;
+
         // Insurance split: a lone dragon dying loses the game, whatever its length.
         if (ct.get_unit_count() < params::MIN_UNITS && length >= params::INSURANCE_MIN_LEN &&
             ct.can_split(params::INSURANCE_CHILD) && bodyKnown && best->safe && !enemyNear(head, 3) &&
@@ -715,13 +914,8 @@ struct Brain {
             return;
         }
 
-        // Voluntary split: more collectors and insurance against elimination.
-        if (params::SPLIT_MIN_LEN > 0 && length >= params::SPLIT_MIN_LEN && round <= params::SPLIT_LAST_ROUND &&
-            canSplit && !enemyNear(head, 3) && best->safe) {
-            split(length / 2);
-            ct.set_indicator_string("split");
+        if (trySwarmSplit(length, units, *best, bodyKnown))
             return;
-        }
 
         move(best->dir);
     }
