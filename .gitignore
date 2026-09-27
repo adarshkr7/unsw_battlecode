@@ -1,0 +1,7 @@
+# local build output and match artefacts
+.unswbc-build/
+replays/
+*.replay
+results/
+__pycache__/
+*.pyc
