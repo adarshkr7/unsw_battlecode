@@ -172,7 +172,11 @@ struct Brain {
 
     // -- knowledge -----------------------------------------------------------
 
+    // Walls and portals must match exactly. Pearl data may differ a little (the ladder has
+    // changed maps, e.g. the 10-dragon Dilemma): our copy is only a starting guess, and what we
+    // see overrides it (absorbView).
     bool mapMatchesView(MapInfo const& m) const {
+        int spawnMismatch = 0;
         for (auto const& tile : ct.get_tiles()) {
             int const t = idxOf(tile.get_position());
             for (int d = 0; d < 4; d++) {
@@ -184,7 +188,7 @@ struct Brain {
                     return false;
             }
             bool const never = tile.get_pearl_time() < 0;
-            if (never != (m.maxGap[t] == 0))
+            if (never != (m.maxGap[t] == 0) && ++spawnMismatch > params::SPAWN_MISMATCH_OK)
                 return false;
         }
         return true;
@@ -405,12 +409,44 @@ struct Brain {
                 body.push_front(t);
             ok = !body.empty() && body.front() == head;
         }
+        if (params::DEBUG_SONAR && !ok && haveBody && ct.get_length() >= 8)
+            ct.output_log("body lost", ct.get_length(), "planned", plannedPath.size(), "round", round);
         // A new child's parent sends its shape at the split; otherwise rebuild what we can see.
-        if (!ok && !bodyFromSonar())
+        if (!ok && !bodyFromSonar()) {
             rebuildBodyFromView();
+            if (params::STRAIGHT_START && round == 0)
+                extendStraight();
+        }
         while (static_cast<int>(body.size()) > ct.get_length())
             body.pop_back();
         plannedPath.clear();
+    }
+
+    // Round 0 without map data (or on a changed map): every start we have seen is a straight
+    // line, so extend what we can see straight back, checked against the view.
+    void extendStraight() {
+        int const len = ct.get_length();
+        if (static_cast<int>(body.size()) >= len)
+            return;
+        int d;
+        if (body.size() >= 2) {
+            d = dirTo(body[body.size() - 2], body.back());
+            // Only a body that is straight as far as we can see (some starts zigzag).
+            for (std::size_t i = 0; i + 1 < body.size(); i++)
+                if (dirTo(body[i], body[i + 1]) != d)
+                    return;
+        } else {
+            d = (dirIndex(ct.get_dir()) + 2) % 4; // behind the head
+        }
+        std::deque<int> b = body;
+        while (d >= 0 && static_cast<int>(b.size()) < len) {
+            int const t = nbr[b.back() * 4 + d];
+            if (t < 0 || (inView[t] && occId[t] != myId) || std::find(b.begin(), b.end(), t) != b.end())
+                return; // not a straight line after all: keep what we know
+            b.push_back(t);
+        }
+        body = std::move(b);
+        haveBody = true;
     }
 
     // Our whole body from a BODY message, if one fits: right length, every link a real step,
@@ -686,6 +722,8 @@ struct Brain {
         // Our body after the move, and when each of its tiles frees up.
         int const newLength = c.eats ? length + 1 : length;
         c.newLength = newLength;
+        bool const kingRoomVsEnemies = params::ENDGAME_KEEP_WHOLE && round >= params::CONSOLIDATE_ROUND &&
+                                       length >= params::KING_ROOM_LEN;
         int const keep = std::min<int>(static_cast<int>(body.size()), newLength - 1);
         // Index from the tail j frees for move j+2 (collision is checked before the tail moves).
         ++ownScenario;
@@ -731,7 +769,10 @@ struct Brain {
                     reachedOwn = true;
                 visit(n, k + 1);
                 // We are on move, so ties with another head are ours.
-                owned[n] = owned[t] && (!params::VORONOI || othersDist[n] >= k + 2);
+                // The endgame king counts only enemy heads as rivals for room: the feeders
+                // crowding around it are coming to die for it, not to take its space.
+                int const rival = kingRoomVsEnemies ? distE[n] : othersDist[n];
+                owned[n] = owned[t] && (!params::VORONOI || rival >= k + 2);
                 room += owned[n];
                 queue[qt++] = n;
             }
@@ -1106,7 +1147,10 @@ struct Brain {
         kingTile = -1;
         kingLen = 0;
         kingVisible = false;
-        if (units <= params::FEED_KEEP_UNITS)
+        // Late in the game the last two dragons may merge too (we lost 10-11 and 17-18 holding
+        // two that never could); earlier, keep a spare against elimination.
+        int const keep = params::FINAL_MERGE && round >= params::FINAL_MERGE_ROUND ? 1 : params::FEED_KEEP_UNITS;
+        if (units <= keep)
             return;
         // With sonar the whole team agrees on one king: the longest dragon anyone has heard of.
         // Head for it from KING_PULL_ROUND, feed it once it is in view.
@@ -1162,6 +1206,9 @@ struct Brain {
             return false;
         // The parent stands still for a turn, so not where an enemy head can reach it.
         if (threatLen[body.front()] < INF)
+            return false;
+        // Early king (sparring style): from KING_GROW_ROUND the king stops halving itself.
+        if (params::SONAR && round >= params::KING_GROW_ROUND && king.id == myId)
             return false;
         // Halves, or one off, preferring a cut the child's body message can reach. A child that
         // could neither see its whole body nor be told it waits: next turn the body may be straight.
@@ -1305,6 +1352,13 @@ struct Brain {
                 return;
             }
         }
+        // Every move kills us and we don't know our whole body, so the escape split above was
+        // skipped: split anyway. Our front is known, and the rear leaves from our old tail.
+        if (!best && params::DOOMED_BLIND_SPLIT && canSplit && !bodyKnown && length >= 4) {
+            split(length - 2);
+            ct.set_indicator_string("blind escape split");
+            return;
+        }
         if (!best) {
             // Every move kills us. Take an enemy with us if we can.
             for (auto const& c : cands) {
@@ -1324,6 +1378,9 @@ struct Brain {
             }
             move(choice);
             ct.set_indicator_string("doomed");
+            if (params::DEBUG_SONAR && length >= 8)
+                ct.output_log("doomed", length, "body", body.size(), "canSplit", canSplit ? 1 : 0, "units", units,
+                              "limit", game.get_unit_limit(), "round", round);
             return;
         }
 
@@ -1332,6 +1389,7 @@ struct Brain {
 
         // Insurance split: a lone dragon dying loses the game, whatever its length.
         if (ct.get_unit_count() < params::MIN_UNITS && length >= params::INSURANCE_MIN_LEN &&
+            !(params::FINAL_MERGE && round >= params::FINAL_MERGE_ROUND) &&
             ct.can_split(params::INSURANCE_CHILD) && bodyKnown && best->safe && !enemyNear(head, 3) &&
             splitValue(params::INSURANCE_CHILD) == length) {
             split(params::INSURANCE_CHILD);

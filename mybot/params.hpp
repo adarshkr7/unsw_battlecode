@@ -8,6 +8,11 @@ inline constexpr bool DEBUG = false;
 // Use the built-in ladder maps (walls, portals, spawn rates, start bodies). Off = play as on an
 // unseen tournament map, learning only from what we see.
 inline constexpr bool USE_MAP_DATA = true;
+// Recognise a map by walls and portals; tolerate this many visible tiles whose pearl spawning
+// differs from our copy (the ladder changes maps). 0 = the old strict match.
+inline constexpr int SPAWN_MISMATCH_OK = 3;
+// Round 0: if the start body is still unknown, assume the straight line behind the head.
+inline constexpr bool STRAIGHT_START = true; 
 
 // --- Phases ---------------------------------------------------------------
 // Swarm phase: split in half whenever this long, up to the team's dragon cap. Many small
@@ -27,7 +32,7 @@ inline constexpr bool SPLIT_WAITS_FOR_HANDOFF = true;
 inline constexpr int CONSOLIDATE_ROUND = 380;
 // From CONSOLIDATE_ROUND a dragon of KING_ROOM_LEN+ judges escape splits by its longest surviving
 // piece, not their sum (the ladder game we lost 19-20 had our 24-long king split itself to 12).
-inline constexpr bool ENDGAME_KEEP_WHOLE = false;
+inline constexpr bool ENDGAME_KEEP_WHOLE = true;
 
 // Insurance: losing every dragon loses the game outright, so keep at least this many alive
 // by splitting a small child off any dragon long enough to spare it.
@@ -59,6 +64,9 @@ inline constexpr double HUNT_ATTRACT_AGGRO = 200.0;
 inline constexpr int FEED_MARGIN = 0;         // extra length (beyond a tie) a king needs over us
 inline constexpr int FEED_DIST = 2;           // die this close (in steps) to the king's head
 inline constexpr int FEED_KEEP_UNITS = 2;     // never feed if it would leave fewer dragons
+inline constexpr bool DOOMED_BLIND_SPLIT = true;  // doomed with a partly known body: split anyway
+inline constexpr bool FINAL_MERGE = true;     // from FINAL_MERGE_ROUND, feed down to one dragon
+inline constexpr int FINAL_MERGE_ROUND = 450;
 inline constexpr double FEED_ATTRACT = 400.0; // pull towards a king we could feed
 
 // --- Move scoring weights -------------------------------------------------------
@@ -94,6 +102,7 @@ inline constexpr double DIVE_SEG_COST = 350.0;   // per segment of a dragon that
 inline constexpr bool SONAR = true;
 inline constexpr bool DEBUG_SONAR = false;    // log body handoffs (local debugging only)
 inline constexpr int KING_STALE = 30;         // rounds a king record lives without a refresh
+inline constexpr int KING_GROW_ROUND = 999;   // from here the king stops swarm-splitting (999 = never)
 inline constexpr int KING_PULL_ROUND = 340;   // from here, head for the king we know of
 inline constexpr double KING_APPROACH = 40.0; // per step closer to that king
 inline constexpr int KING_FOOD_RADIUS = 3;         // pearls this close to the king are its own
