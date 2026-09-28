@@ -5,6 +5,9 @@ namespace params {
 
 // Log every decision (local debugging only: output costs points in the judge).
 inline constexpr bool DEBUG = false;
+// Use the built-in ladder maps (walls, portals, spawn rates, start bodies). Off = play as on an
+// unseen tournament map, learning only from what we see.
+inline constexpr bool USE_MAP_DATA = true;
 
 // --- Phases ---------------------------------------------------------------
 // Swarm phase: split in half whenever this long, up to the team's dragon cap. Many small
@@ -13,9 +16,18 @@ inline constexpr int SWARM_SPLIT_LEN = 4;
 // Split even on a turn we could eat (the parent then waits a turn). v2d found ~20% more
 // dragons and ~15% more total length by round 150 this way.
 inline constexpr bool SPLIT_WHILE_EATING = true;
+// Chained splits (from v2d): count a stuck child of 4+ splitting again on its first turn.
+inline constexpr bool CHAIN_SPLIT = false;
+// No swarm split while an enemy head can reach ours (the parent stands still for a turn).
+inline constexpr bool THREAT_ON_OUR_HEADS = false;
+// Delay a swarm split whose child could neither see its body nor be told it by sonar.
+inline constexpr bool SPLIT_WAITS_FOR_HANDOFF = true;
 // From this round on: no more swarm splits; small dragons feed pearls to a big ally, so we
 // finish with one long dragon (the winner at round 500 is the team with the longest one).
 inline constexpr int CONSOLIDATE_ROUND = 380;
+// From CONSOLIDATE_ROUND a dragon of KING_ROOM_LEN+ judges escape splits by its longest surviving
+// piece, not their sum (the ladder game we lost 19-20 had our 24-long king split itself to 12).
+inline constexpr bool ENDGAME_KEEP_WHOLE = false;
 
 // Insurance: losing every dragon loses the game outright, so keep at least this many alive
 // by splitting a small child off any dragon long enough to spare it.
@@ -69,11 +81,9 @@ inline constexpr double REVISIT_DECAY = 0.95;    // heat decay per round
 
 // --- Diving into lanes and dead ends (where most pearls spawn on maze maps) ----------
 inline constexpr bool DIVE = true;
+inline constexpr bool DIVE_WALLS_ONLY = true;    // dive only into pockets made by kelp (v2d: anywhere)
 inline constexpr double DIVE_MIN_FOOD = 1.0;     // expected pearls in the pocket before we bother
-inline constexpr int DIVE_MAX_LEN = 5;
-// v2d-style dives (profiles with careDive off): longer dragons, one flat price.
-inline constexpr int V2D_DIVE_MAX_LEN = 8;
-inline constexpr double V2D_DIVE_PENALTY = 500.0;           // longer dragons are worth too much to risk
+inline constexpr int DIVE_MAX_LEN = 5;           // longer dragons are worth too much to risk
 inline constexpr int DIVE_ESCAPE_LEN = 4;        // this long after eating: we can split our way out
 inline constexpr double DIVE_ESCAPE_COST = 400.0; // the 2-long parent we leave behind, roughly
 inline constexpr int DIVE_MAX_DEATH_LEN = 3;     // dragons this small may die in there...
@@ -88,6 +98,21 @@ inline constexpr int KING_PULL_ROUND = 340;   // from here, head for the king we
 inline constexpr double KING_APPROACH = 40.0; // per step closer to that king
 inline constexpr int KING_FOOD_RADIUS = 3;         // pearls this close to the king are its own
 inline constexpr double KING_FOOD_PENALTY = 300.0; // for a feeder that eats one anyway
+
+// --- In-game feedback --------------------------------------------------------------
+// Numbers war: ally vs enemy heads around us (view + sonar echoes), smoothed.
+inline constexpr bool ADAPT_NUMBERS = false;
+inline constexpr double ADAPT_DECAY = 0.9;        // per turn
+inline constexpr double ADAPT_HI = 1.5;           // this many of ours per theirs: take even trades, chase
+inline constexpr double ADAPT_LO = 0.67;          // this few: no even trades, ...
+inline constexpr double ADAPT_THREAT_SCALE = 2.0; // ... and fear enemy reach twice as much
+// Length race: from RACE_ROUND compare our king with the longest enemy seen (relayed in KING).
+inline constexpr bool RACE_AWARE = false;
+inline constexpr int RACE_ROUND = 340;
+inline constexpr int RACE_MARGIN = 3;             // this many segments counts as ahead / behind
+inline constexpr int ENEMY_MAX_STALE = 60;        // rounds an enemy length sighting counts
+inline constexpr double RACE_KING_SAFE = 3.0;     // ahead: the king fears enemy reach 3x (and values room 2x)
+inline constexpr double RACE_KING_BOLD = 0.5;     // behind: the king fears it half as much
 
 // --- Pearl-belief model ----------------------------------------------------------
 inline constexpr double ENEMY_CLOSER = 0.15;     // enemy head reaches the pearl first

@@ -52,6 +52,7 @@ inline constexpr int BODY_MAX_LEN = 1 + (PAYLOAD_BITS - 5) / 2;
 // KING: the longest dragon of ours the sender knows of.
 struct King {
     int id = -1, len = 0, x = 0, y = 0, round = -1000;
+    int enemyMax = 0; // the sender's longest enemy seen lately (spare bits: no extra pings)
 };
 inline std::uint64_t packKing(King const& k) {
     std::uint64_t p = static_cast<std::uint64_t>(k.id & 0xFFF);
@@ -59,6 +60,7 @@ inline std::uint64_t packKing(King const& k) {
     p |= static_cast<std::uint64_t>(k.x & 0x7F) << 20;
     p |= static_cast<std::uint64_t>(k.y & 0x7F) << 27;
     p |= static_cast<std::uint64_t>(k.round & 0x1FF) << 34;
+    p |= static_cast<std::uint64_t>(k.enemyMax & 0xFF) << 43;
     return pack(KING, p);
 }
 inline King unpackKing(std::uint64_t p) {
@@ -68,6 +70,7 @@ inline King unpackKing(std::uint64_t p) {
     k.x = static_cast<int>((p >> 20) & 0x7F);
     k.y = static_cast<int>((p >> 27) & 0x7F);
     k.round = static_cast<int>((p >> 34) & 0x1FF);
+    k.enemyMax = static_cast<int>((p >> 43) & 0xFF);
     return k;
 }
 

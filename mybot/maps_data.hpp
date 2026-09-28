@@ -3,9 +3,6 @@
 
 namespace maps_data {
 
-// File names without .map, in the same order as MAPS (profiles.hpp keys on these).
-inline const char* const NAMES[] = {"arena", "autarky", "big_empty", "Colosseum", "default", "default_small", "devil", "dilemma", "portals", "queen_of_spades", "schooltime", "slithery_fight", "stronghold", "trauma", "trophy"};
-
 inline const char* const MAPS[] = {
     // arena.map
     R"MAP(MAP 11 11
