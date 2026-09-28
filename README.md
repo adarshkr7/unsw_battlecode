@@ -30,6 +30,12 @@ mkdir bots/v2 && cp mybot/*.cpp mybot/*.hpp mybot/bot.toml bots/v2/
 - `showmap.py maps/x.map [x0 y0 x1 y1]` draws a map as ASCII (`|`/`--` kelp, `P` portal, `*` fast-spawning tile, `A`/`a` spawns).
 - Debugging one game: set `DEBUG = true` in `params.hpp`, then `unswbc run maps/x.map mybot bots/v1 --sandbox -v --seed N`. Each dragon logs its four move scores every turn. **Turn it back off before submitting**, since output costs CPU points on the judge.
 
+## Ladder game limits
+
+- The team can start **60 games an hour** by hand, ranked or unranked, on the site or through the API. A ranked battle is 5 games on random maps, so that is 12 ranked scrims an hour. An unranked battle is one game per map we choose.
+- Battles against the organisers' teams (marked DEV) have their own allowance of another 60 games an hour.
+- Autoscrims don't count. They are ranked 5-game series, drawn every 2 hours, at most 2 per batch.
+
 ## Engine facts verified by experiment (not all are in the docs)
 
 - Rounds are numbered from 0.
