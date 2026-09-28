@@ -26,7 +26,8 @@ struct MapProfile {
     Profile profile;
 };
 
-// From v4 vs v2d head to head (which bot won the map). Maps with no clear winner stay on V4.
+// From 330 games of v4 vs v2d (22 per map): each map plays like the bot that won it there.
+// Maps with no clear winner (big_empty, dilemma) stay on V4.
 inline constexpr MapProfile MAP_PROFILES[] = {
     {"arena", V2D},
     {"autarky", V4},
@@ -34,11 +35,11 @@ inline constexpr MapProfile MAP_PROFILES[] = {
     {"Colosseum", V4},
     {"default", V2D},
     {"default_small", V2D},
-    {"devil", V4},
+    {"devil", V2D},
     {"dilemma", V4},
-    {"portals", V2D},
-    {"queen_of_spades", V4},
-    {"schooltime", V2D},
+    {"portals", V4},
+    {"queen_of_spades", V2D},
+    {"schooltime", V4},
     {"slithery_fight", V4},
     {"stronghold", V4},
     {"trauma", V4},

@@ -104,6 +104,8 @@ def main() -> None:
     ap.add_argument("--native", action="store_true", help="run native binaries instead of the judge sandbox")
     ap.add_argument("--replays", help="keep replays of games bot1 did not win in this folder")
     ap.add_argument("--no-longest", action="store_true", help="skip reading each game's longest dragon from its replay")
+    ap.add_argument("--early", action="store_true", help="also report rounds 50/150 (slow: decodes whole replays)")
+    ap.add_argument("--keep-replays", action="store_true", help="keep every replay (see tools/replay_summary.py)")
     ap.add_argument("--json", help="write every game's result to this file")
     args = ap.parse_args()
 
@@ -159,7 +161,15 @@ def main() -> None:
     if replay_tmp and not args.no_longest:
         files = [r["replay"] for r in results if r["ok"] and r["replay"] and pathlib.Path(r["replay"]).is_file()]
         longest = {}
-        for i in range(0, len(files), 40):
+        # Fast pass: each replay's result section only.
+        done = subprocess.run(["node", str(ROOT / "tools" / "replay_results.cjs"), str(replay_tmp)],
+                              capture_output=True, text=True, cwd=ROOT)
+        if done.returncode == 0:
+            for item in json.loads(done.stdout):
+                if "error" not in item:
+                    longest[item["file"]] = {"teamA": {"longestDragon": item["A"]["longest"]},
+                                             "teamB": {"longestDragon": item["B"]["longest"]}}
+        for i in range(0, len(files) if args.early else 0, 40):
             chunk = files[i:i + 40]
             done = subprocess.run(["node", str(ROOT / "tools" / "replay.cjs"), "--json", "--result-only",
                                    "--at", "50,150", *chunk],
@@ -260,7 +270,9 @@ def main() -> None:
         for msg, n in counter.most_common(5):
             print(f"errors ({'bot1' if k == 1 else 'bot2' if k == 2 else 'engine'}) x{n}: {msg}")
 
-    if replay_tmp and not args.replays:
+    if replay_tmp and args.keep_replays:
+        print(f"replays kept in {replay_tmp} (python tools/replay_summary.py {replay_tmp} BOT1 BOT2)")
+    elif replay_tmp and not args.replays:
         shutil.rmtree(replay_tmp, ignore_errors=True)
     elif replay_tmp:
         kept = 0
