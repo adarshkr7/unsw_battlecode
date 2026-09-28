@@ -21,7 +21,7 @@ games = json.loads(done.stdout)
 
 
 def side_of(bots, name):
-    return next((t for t in "AB" if bots[t].startswith(name + "-") or bots[t].startswith(name + ".")), None)
+    return next((t for t in "AB" if bots[t].startswith(name + "-") or bots[t] == name + ".wasm"), None)
 
 
 def wilson(w, n, z=1.96):

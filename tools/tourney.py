@@ -97,7 +97,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bot1")
     ap.add_argument("bot2")
-    ap.add_argument("--maps", help="comma-separated map names (default: every map in maps/)")
+    ap.add_argument("--maps", help="comma-separated map names (default: every map in the maps folder)")
+    ap.add_argument("--maps-dir", default="maps", help="folder of .map files (e.g. maps_swapped: team spawns swapped)")
     ap.add_argument("--seeds", type=int, default=2, help="seeds per map (each played both ways)")
     ap.add_argument("--seed-base", type=int, default=1000)
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 2)
@@ -112,8 +113,9 @@ def main() -> None:
     global PYTHON
     PYTHON = tool_python()
     sandbox = not args.native
-    names = [m.strip() for m in args.maps.split(",")] if args.maps else sorted(p.stem for p in (ROOT / "maps").glob("*.map"))
-    maps = [str(ROOT / "maps" / f"{n}.map") for n in names]
+    maps_dir = ROOT / args.maps_dir
+    names = [m.strip() for m in args.maps.split(",")] if args.maps else sorted(p.stem for p in maps_dir.glob("*.map"))
+    maps = [str(maps_dir / f"{n}.map") for n in names]
     for m in maps:
         if not pathlib.Path(m).is_file():
             sys.exit(f"no such map: {m}")
