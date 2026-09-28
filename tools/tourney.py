@@ -100,7 +100,7 @@ def main() -> None:
     ap.add_argument("--maps", help="comma-separated map names (default: every map in maps/)")
     ap.add_argument("--seeds", type=int, default=2, help="seeds per map (each played both ways)")
     ap.add_argument("--seed-base", type=int, default=1000)
-    ap.add_argument("-j", "--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--native", action="store_true", help="run native binaries instead of the judge sandbox")
     ap.add_argument("--replays", help="keep replays of games bot1 did not win in this folder")
     ap.add_argument("--no-longest", action="store_true", help="skip reading each game's longest dragon from its replay")
