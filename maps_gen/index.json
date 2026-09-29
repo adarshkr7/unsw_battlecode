@@ -1,0 +1,570 @@
+{
+ "gen1_00": {
+  "size": "18x46",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   8,
+   4,
+   3
+  ],
+  "pearls_per_round": 6.6,
+  "notes": [
+   "terrain segments+arena",
+   "0 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,250)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_01": {
+  "size": "57x45",
+  "sym": "xy",
+  "dragons": 14,
+  "lens": [
+   4,
+   4,
+   3,
+   3,
+   3,
+   3,
+   3
+  ],
+  "pearls_per_round": 3.5,
+  "notes": [
+   "terrain pockets+rooms",
+   "2 portal pairs (plus mirrors)",
+   "background 0.00 of tiles (1,250)",
+   "4 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_02": {
+  "size": "60x25",
+  "sym": "xy",
+  "dragons": 12,
+  "lens": [
+   4,
+   3,
+   3,
+   2,
+   2,
+   2
+  ],
+  "pearls_per_round": 2.7,
+  "notes": [
+   "walled border",
+   "terrain open",
+   "1 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,2000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_03": {
+  "size": "62x35",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   4,
+   4,
+   4
+  ],
+  "pearls_per_round": 2.0,
+  "notes": [
+   "walled border",
+   "terrain arena+pockets+segments",
+   "3 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,1000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_04": {
+  "size": "43x13",
+  "sym": "x",
+  "dragons": 14,
+  "lens": [
+   4,
+   4,
+   4,
+   4,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 9.0,
+  "notes": [
+   "terrain pockets+rooms",
+   "2 portal pairs (plus mirrors)",
+   "background 0.00 of tiles (1,250)",
+   "6 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_05": {
+  "size": "61x49",
+  "sym": "xy",
+  "dragons": 10,
+  "lens": [
+   4,
+   3,
+   3,
+   2,
+   2
+  ],
+  "pearls_per_round": 5.5,
+  "notes": [
+   "terrain pockets+rooms+lanes",
+   "0 portal pairs (plus mirrors)",
+   "background 0.00 of tiles (1,1000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_06": {
+  "size": "38x11",
+  "sym": "xy",
+  "dragons": 4,
+  "lens": [
+   4,
+   3
+  ],
+  "pearls_per_round": 1.0,
+  "notes": [
+   "walled border",
+   "terrain lanes+segments+pockets",
+   "1 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,1000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_07": {
+  "size": "24x22",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   10,
+   4,
+   3
+  ],
+  "pearls_per_round": 11.7,
+  "notes": [
+   "terrain open",
+   "0 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,4000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_08": {
+  "size": "61x43",
+  "sym": "y",
+  "dragons": 6,
+  "lens": [
+   4,
+   3,
+   3
+  ],
+  "pearls_per_round": 4.2,
+  "notes": [
+   "walled border",
+   "terrain arena+rooms",
+   "1 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,4000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_09": {
+  "size": "56x28",
+  "sym": "xy",
+  "dragons": 8,
+  "lens": [
+   3,
+   3,
+   2,
+   2
+  ],
+  "pearls_per_round": 6.4,
+  "notes": [
+   "terrain lanes",
+   "1 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,4000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_10": {
+  "size": "41x53",
+  "sym": "xy",
+  "dragons": 14,
+  "lens": [
+   4,
+   4,
+   3,
+   3,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 4.2,
+  "notes": [
+   "walled border",
+   "terrain lanes+segments",
+   "6 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,1000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_11": {
+  "size": "56x54",
+  "sym": "y",
+  "dragons": 14,
+  "lens": [
+   4,
+   4,
+   3,
+   3,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 4.7,
+  "notes": [
+   "terrain pockets+lanes+arena",
+   "3 portal pairs (plus mirrors)",
+   "background 0.00 of tiles (1,1000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_12": {
+  "size": "52x38",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   3,
+   3,
+   3
+  ],
+  "pearls_per_round": 6.6,
+  "notes": [
+   "walled border",
+   "terrain rooms+arena",
+   "6 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,250)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_13": {
+  "size": "37x17",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   7,
+   2,
+   2
+  ],
+  "pearls_per_round": 0.9,
+  "notes": [
+   "walled border",
+   "terrain lanes+arena",
+   "6 portal pairs (plus mirrors)",
+   "background 0.50 of tiles (1,2000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_14": {
+  "size": "43x25",
+  "sym": "x",
+  "dragons": 4,
+  "lens": [
+   11,
+   2
+  ],
+  "pearls_per_round": 14.2,
+  "notes": [
+   "walled border",
+   "terrain segments+rooms+pockets",
+   "1 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,250)",
+   "7 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_15": {
+  "size": "34x28",
+  "sym": "y",
+  "dragons": 10,
+  "lens": [
+   13,
+   3,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 7.8,
+  "notes": [
+   "walled border",
+   "terrain open",
+   "1 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,500)",
+   "1 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_16": {
+  "size": "40x24",
+  "sym": "xy",
+  "dragons": 8,
+  "lens": [
+   11,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 5.3,
+  "notes": [
+   "terrain arena+rooms+pockets",
+   "3 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,1000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_17": {
+  "size": "12x41",
+  "sym": "y",
+  "dragons": 4,
+  "lens": [
+   4,
+   3
+  ],
+  "pearls_per_round": 0.2,
+  "notes": [
+   "terrain pockets+rooms+segments",
+   "2 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,4000)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_18": {
+  "size": "38x19",
+  "sym": "xy",
+  "dragons": 6,
+  "lens": [
+   4,
+   4,
+   4
+  ],
+  "pearls_per_round": 3.6,
+  "notes": [
+   "terrain pockets",
+   "3 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,2000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_19": {
+  "size": "39x24",
+  "sym": "y",
+  "dragons": 6,
+  "lens": [
+   4,
+   3,
+   3
+  ],
+  "pearls_per_round": 7.0,
+  "notes": [
+   "walled border",
+   "terrain open",
+   "1 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,250)",
+   "4 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_20": {
+  "size": "64x35",
+  "sym": "xy",
+  "dragons": 2,
+  "lens": [
+   4
+  ],
+  "pearls_per_round": 20.7,
+  "notes": [
+   "terrain pockets+rooms+lanes",
+   "2 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,2000)",
+   "15 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_21": {
+  "size": "43x43",
+  "sym": "xy",
+  "dragons": 2,
+  "lens": [
+   4
+  ],
+  "pearls_per_round": 14.7,
+  "notes": [
+   "terrain rooms",
+   "2 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,250)"
+  ],
+  "engine": "ok"
+ },
+ "gen1_22": {
+  "size": "33x55",
+  "sym": "y",
+  "dragons": 10,
+  "lens": [
+   15,
+   3,
+   2,
+   2,
+   2
+  ],
+  "pearls_per_round": 17.9,
+  "notes": [
+   "terrain rooms",
+   "2 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,250)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_23": {
+  "size": "22x11",
+  "sym": "xy",
+  "dragons": 14,
+  "lens": [
+   4,
+   4,
+   4,
+   3,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 6.3,
+  "notes": [
+   "terrain pockets+lanes",
+   "0 portal pairs (plus mirrors)",
+   "background 0.00 of tiles (1,250)",
+   "6 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_24": {
+  "size": "56x48",
+  "sym": "xy",
+  "dragons": 2,
+  "lens": [
+   4
+  ],
+  "pearls_per_round": 19.0,
+  "notes": [
+   "terrain rooms+segments",
+   "3 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,500)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_25": {
+  "size": "45x21",
+  "sym": "y",
+  "dragons": 10,
+  "lens": [
+   4,
+   4,
+   4,
+   2,
+   2
+  ],
+  "pearls_per_round": 6.7,
+  "notes": [
+   "terrain lanes",
+   "1 portal pairs (plus mirrors)",
+   "background 0.50 of tiles (1,250)",
+   "1 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_26": {
+  "size": "52x20",
+  "sym": "y",
+  "dragons": 12,
+  "lens": [
+   3,
+   3,
+   3,
+   3,
+   3,
+   2
+  ],
+  "pearls_per_round": 3.4,
+  "notes": [
+   "walled border",
+   "terrain open",
+   "0 portal pairs (plus mirrors)",
+   "background 1.00 of tiles (1,4000)",
+   "4 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_27": {
+  "size": "62x52",
+  "sym": "y",
+  "dragons": 8,
+  "lens": [
+   18,
+   4,
+   3,
+   3
+  ],
+  "pearls_per_round": 24.9,
+  "notes": [
+   "terrain pockets+arena",
+   "1 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,1000)",
+   "25 hot spots"
+  ],
+  "engine": "ok"
+ },
+ "gen1_28": {
+  "size": "32x25",
+  "sym": "x",
+  "dragons": 6,
+  "lens": [
+   10,
+   3,
+   3
+  ],
+  "pearls_per_round": 1.5,
+  "notes": [
+   "terrain arena+lanes+pockets",
+   "0 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,2000)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ },
+ "gen1_29": {
+  "size": "52x35",
+  "sym": "y",
+  "dragons": 4,
+  "lens": [
+   4,
+   3
+  ],
+  "pearls_per_round": 9.1,
+  "notes": [
+   "terrain segments",
+   "0 portal pairs (plus mirrors)",
+   "background 0.25 of tiles (1,250)",
+   "home food + contested middle"
+  ],
+  "engine": "ok"
+ }
+}
