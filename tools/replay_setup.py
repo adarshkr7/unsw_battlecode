@@ -25,7 +25,7 @@ source = zipfile.ZipFile(vsix).read("extension/dist/webview/webview.js").decode(
 mount = re.search(r"var (\w+)=document\.getElementById\(`app`\);[^;]*\}\)\}\)\(\);\s*$", source)
 if mount is None:
     sys.exit("viewer bundle changed shape: cannot find the UI mount to replace")
-patched = source[: mount.start()] + "globalThis.__replay={decode:Hf};})();\n"
+patched = source[: mount.start()] + "globalThis.__replay={decode:Hf,parse:Bf};})();\n"
 OUT.parent.mkdir(exist_ok=True)
 OUT.write_text(patched, encoding="utf-8")
 print(f"wrote {OUT} from {vsix.name}")

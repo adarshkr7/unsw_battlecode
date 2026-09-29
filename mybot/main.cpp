@@ -16,8 +16,10 @@
 #include "helper.hpp"
 #include "maps_data.hpp"
 #include "params.hpp"
+#include "sonar.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -49,7 +51,6 @@ struct Brain {
     std::vector<int> lastSeen, nextSpawn, visitRound;
     std::vector<double> visitHeat; // how recently and often our head stood here (breaks loops)
     std::vector<uint8_t> pearlSeen;
-    std::vector<uint8_t> heard; // our pearl knowledge of the tile came over sonar, not our eyes
 
     // This turn's view.
     std::vector<uint8_t> inView, pearlNow;
@@ -76,13 +77,7 @@ struct Brain {
 
     // Consolidation: the ally we would feed, if any.
     int kingTile = -1, kingLen = 0;
-    bool kingVisible = false; // kingTile is its head this turn (else: where we last heard it was)
     std::vector<int> kingDist;
-
-    // Sonar: the best king we have seen or heard of, passed from dragon to dragon.
-    struct KingNews { int id = -1; int tile = -1; int len = 0; int round = -1; };
-    KingNews news;
-    bool amKing = false;
 
     // Hunting: enemy heads we saw recently (a big dragon stays worth chasing for a while).
     struct Sighting { int id; int tile; int len; int round; };
@@ -90,7 +85,6 @@ struct Brain {
     std::vector<int> preyDist; // steps to the nearest enemy head worth trading with
     std::vector<int> othersDist; // moves any other dragon's head needs to reach a tile (bodies block)
     bool aggressive = false;     // we clearly outnumber the enemies around us
-    int unitsNow = 1;            // our team's living dragons this turn
     double preyGain = 0.0;     // what the best such trade is worth
 
     // Our own body, head first. Tracked across turns so we know it beyond the window.
@@ -108,6 +102,23 @@ struct Brain {
     std::vector<double> powBest, powSum, decayPow, heatDecay;
 
     bool identified = false;
+    int unitsNow = 1; // our team's dragon count this turn
+
+    // Sonar: what we send this turn (per direction), BODY payloads we received, and the
+    // longest dragon of ours we know of (ourselves, a sighting, or a relayed KING record).
+    std::array<std::uint64_t, 4> outbox{};
+    std::array<bool, 4> outboxSet{};
+    std::vector<std::uint64_t> bodyMsgs;
+    sonar::King king;
+    bool kingVisible = false; // the dragon we would feed is in view now
+
+    // Feedback within the game. Numbers war: ally vs enemy heads around us (view plus the echo
+    // counts our pings bring back), smoothed over rounds. Length race: our king against the
+    // longest enemy anyone of ours has seen lately.
+    double allyEma = 0.0, enemyEma = 0.0;
+    bool defensive = false;
+    int enemyMax = 0, enemyMaxRound = -1000;
+    int race = 0; // +1 ahead, -1 behind, 0 level or unknown
     int round = 0;
 
     Brain(Controller& c, Game& g) : ct(c), game(g), myId(c.get_id()), myTeam(c.get_team().value),
@@ -119,7 +130,6 @@ struct Brain {
         lastSeen.assign(N, -1);
         nextSpawn.assign(N, -1);
         pearlSeen.assign(N, 0);
-        heard.assign(N, 0);
         visitRound.assign(N, 0);
         visitHeat.assign(N, 0.0);
         inView.assign(N, 0);
@@ -182,6 +192,8 @@ struct Brain {
 
     void identifyMap() {
         identified = true;
+        if (!params::USE_MAP_DATA)
+            return; // behave as on a map we have never seen: learn everything from view
         int matches = 0;
         for (int i = 0; i < maps_data::MAP_COUNT; i++) {
             int w = 0, h = 0;
@@ -201,10 +213,10 @@ struct Brain {
 
     void adoptSpawnBody(MapInfo const& m) {
         int const head = idxOf(ct.get_position());
-        int const team = myTeam == 'A' ? 0 : 1;
+        // Match on head and length only: the ladder often swaps which team starts where, so
+        // the team label in our copy of the map can be the other side's.
         for (auto const& s : m.spawns) {
-            if (s.team == team && !s.body.empty() && s.body.front() == head &&
-                static_cast<int>(s.body.size()) == ct.get_length()) {
+            if (!s.body.empty() && s.body.front() == head && static_cast<int>(s.body.size()) == ct.get_length()) {
                 body.assign(s.body.begin(), s.body.end());
                 haveBody = true;
                 plannedPath.clear();
@@ -244,7 +256,6 @@ struct Brain {
             pearlNow[t] = tile.has_pearl() ? 1 : 0;
             lastSeen[t] = round;
             pearlSeen[t] = pearlNow[t];
-            heard[t] = 0;
             int const pt = tile.get_pearl_time();
             if (pt < 0) {
                 K.maxGap[t] = 0;
@@ -359,35 +370,7 @@ struct Brain {
 
     // -- own body ------------------------------------------------------------
 
-    bool bodyFromHandoff() {
-        if (!params::HANDOFF)
-            return false;
-        std::vector<int> dirs;
-        for (std::uint64_t m : ct.get_sonar_messages()) {
-            if (!decodeBody(m, dirs) || static_cast<int>(dirs.size()) + 1 > ct.get_length())
-                continue;
-            std::deque<int> built{idxOf(ct.get_position())};
-            bool ok = true;
-            for (int d : dirs) {
-                int const next = nbr[built.back() * 4 + d];
-                if (next < 0 || (inView[next] && occId[next] != myId)) {
-                    ok = false;
-                    break;
-                }
-                built.push_back(next);
-            }
-            if (ok) {
-                body = std::move(built);
-                haveBody = true;
-                return true;
-            }
-        }
-        return false;
-    }
-
     void rebuildBodyFromView() {
-        if (!haveBody && bodyFromHandoff())
-            return;
         int const head = idxOf(ct.get_position());
         struct Part { int tile; int dir; bool used; };
         std::vector<Part> parts;
@@ -422,11 +405,171 @@ struct Brain {
                 body.push_front(t);
             ok = !body.empty() && body.front() == head;
         }
-        if (!ok)
+        // A new child's parent sends its shape at the split; otherwise rebuild what we can see.
+        if (!ok && !bodyFromSonar())
             rebuildBodyFromView();
         while (static_cast<int>(body.size()) > ct.get_length())
             body.pop_back();
         plannedPath.clear();
+    }
+
+    // Our whole body from a BODY message, if one fits: right length, every link a real step,
+    // and every segment we can see is ours.
+    bool bodyFromSonar() {
+        int const head = idxOf(ct.get_position());
+        int const len = ct.get_length();
+        for (std::uint64_t const p : bodyMsgs) {
+            if (static_cast<int>(p & 31) != len || len < 2 || len > sonar::BODY_MAX_LEN)
+                continue;
+            std::deque<int> b{head};
+            bool ok = true;
+            for (int i = 0; i + 1 < len && ok; i++) {
+                int const t = nbr[b.back() * 4 + static_cast<int>((p >> (5 + 2 * i)) & 3)];
+                ok = t >= 0 && !(inView[t] && occId[t] != myId);
+                b.push_back(t);
+            }
+            if (ok) {
+                body = std::move(b);
+                haveBody = true;
+                if (params::DEBUG_SONAR)
+                    ct.output_log("body from sonar", len);
+                return true;
+            }
+        }
+        if (params::DEBUG_SONAR)
+            ct.output_log("no body message", bodyMsgs.size(), "len", len);
+        return false;
+    }
+
+    // Whether splitting off `child` cuts the body where it runs straight: the BODY message
+    // leaves the parent's tail along its last segment, so only then does it hit the child.
+    bool straightCut(int child) const {
+        int const p = static_cast<int>(body.size()) - child;
+        if (p < 2 || child < 1)
+            return false;
+        int const d = dirTo(body[p - 2], body[p - 1]);
+        return d >= 0 && d == dirTo(body[p - 1], body[p]);
+    }
+
+    // Whether a child of this size would have its whole body inside its own 7x7 window.
+    bool childSeesItself(int child) const {
+        int const length = static_cast<int>(body.size());
+        int const h = body[length - 1];
+        for (int i = 0; i < child; i++) {
+            int const t = body[length - 1 - i];
+            int const dx = ((t % W) - (h % W) + Constants::VISION_RADIUS + W) % W;
+            int const dy = ((t / W) - (h / W) + Constants::VISION_RADIUS + H) % H;
+            if (dx >= Constants::VISION_SIZE || dy >= Constants::VISION_SIZE)
+                return false;
+        }
+        return true;
+    }
+
+    // The child will know its whole body: it sees all of it, or our message reaches it.
+    bool childKnowsBody(int child) const { return childSeesItself(child) || straightCut(child); }
+
+    // Direction d with nbr[from][d] == to, or -1.
+    int dirTo(int from, int to) const {
+        for (int d = 0; d < 4; d++)
+            if (nbr[from * 4 + d] == to)
+                return d;
+        return -1;
+    }
+
+    // -- sonar -----------------------------------------------------------------
+
+    void readSonar() {
+        bodyMsgs.clear();
+        for (std::uint64_t const msg : ct.get_sonar_messages()) {
+            sonar::Type type;
+            std::uint64_t payload;
+            if (!sonar::unpack(msg, type, payload))
+                continue; // an enemy's, or noise
+            if (type == sonar::BODY)
+                bodyMsgs.push_back(payload);
+            else if (type == sonar::KING)
+            {
+                sonar::King const k = sonar::unpackKing(payload);
+                considerKing(k, false);
+                noteEnemyLen(k.enemyMax, k.round);
+            }
+        }
+    }
+
+    // Keep the longest dragon of ours we know of; a record ages out after KING_STALE rounds
+    // unless its dragon (or someone who sees it) refreshes it. Sightings only bound the length.
+    void considerKing(sonar::King r, bool lowerBound) {
+        if (r.id < 0 || r.round > round || round - r.round > params::KING_STALE)
+            return;
+        if (r.id == king.id) {
+            if (r.round >= king.round) {
+                if (lowerBound)
+                    r.len = std::max(r.len, king.len);
+                king = r;
+            }
+            return;
+        }
+        bool const expired = king.id < 0 || round - king.round > params::KING_STALE;
+        if (expired || r.len > king.len || (r.len == king.len && r.id < king.id))
+            king = r;
+    }
+
+    void noteEnemyLen(int len, int r) {
+        if (len <= 0 || r > round)
+            return;
+        bool const stale = round - enemyMaxRound > params::ENEMY_MAX_STALE;
+        if (stale || len > enemyMax) {
+            enemyMax = len;
+            enemyMaxRound = r;
+        } else if (len == enemyMax) {
+            enemyMaxRound = std::max(enemyMaxRound, r);
+        }
+    }
+
+    void updateKing(int length) {
+        int const head = body.front();
+        considerKing({myId, length, head % W, head / W, round}, false);
+        for (auto const& a : allyHeads)
+            considerKing({a.id, a.len, a.tile % W, a.tile / W, round}, true);
+        for (auto const& e : enemyHeads)
+            noteEnemyLen(e.len, round);
+    }
+
+    // After the split the parent stays put: a sonar sent into its own neck comes out of its
+    // tail, straight into the child's head, which reads it on its first turn this round.
+    void sendChildBody(int child) {
+        int const length = static_cast<int>(body.size());
+        if (child > sonar::BODY_MAX_LEN || length < child + 2 || !straightCut(child))
+            return;
+        std::uint64_t p = static_cast<std::uint64_t>(child);
+        for (int i = 0; i + 1 < child; i++) {
+            int const d = dirTo(body[length - 1 - i], body[length - 2 - i]);
+            if (d < 0)
+                return;
+            p |= static_cast<std::uint64_t>(d) << (5 + 2 * i);
+        }
+        int const neck = dirTo(body[0], body[1]);
+        if (neck < 0)
+            return;
+        outbox[neck] = sonar::pack(sonar::BODY, p);
+        outboxSet[neck] = true;
+    }
+
+    // Whatever was queued, and the king we know of in every other direction (not into kelp).
+    void sendSonar() {
+        if (!params::SONAR)
+            return;
+        bool const haveKing = king.id >= 0 && round - king.round <= params::KING_STALE;
+        for (int d = 0; d < 4; d++) {
+            if (outboxSet[d])
+                ct.send_sonar(Direction(DCH[d]), outbox[d]);
+            else if (haveKing && haveBody && nbr[body.front() * 4 + d] != STEP_KELP)
+            {
+                sonar::King k = king;
+                k.enemyMax = round - enemyMaxRound <= params::ENEMY_MAX_STALE ? enemyMax : 0;
+                ct.send_sonar(Direction(DCH[d]), sonar::packKing(k));
+            }
+        }
     }
 
     // -- evaluation ----------------------------------------------------------
@@ -469,19 +612,14 @@ struct Brain {
                 return 1.0;
             if (nextSpawn[t] >= 0 && arrival >= nextSpawn[t])
                 return 0.9;
-            // Early for a known spawn: worth hanging around for, discounted by the wait.
-            if (nextSpawn[t] >= 0 && params::FUTURE_WAIT_GAMMA > 0.0)
-                return 0.9 * std::pow(params::FUTURE_WAIT_GAMMA, nextSpawn[t] - arrival);
             return 0.0;
         }
         if (lastSeen[t] >= 0) {
             int const age = round - lastSeen[t];
             if (pearlSeen[t])
-                return decayPow[std::min(age, Constants::MAX_ROUNDS)] * (heard[t] ? params::HEARD_VALUE : 1.0);
+                return decayPow[std::min(age, Constants::MAX_ROUNDS)];
             if (nextSpawn[t] >= 0 && arrival >= nextSpawn[t])
                 return 0.85 * decayPow[std::clamp(round - nextSpawn[t], 0, Constants::MAX_ROUNDS)];
-            if (nextSpawn[t] >= 0 && params::FUTURE_WAIT_GAMMA > 0.0)
-                return 0.85 * std::pow(params::FUTURE_WAIT_GAMMA, nextSpawn[t] - arrival);
             return 0.0;
         }
         // Never seen: the initial countdown is uniform on [minGap, maxGap].
@@ -507,7 +645,7 @@ struct Brain {
         bool eats = false;
         int space = 0;
         bool safe = false; // can reach its own freed body (tail-follow) or has lots of room
-        bool dive = false; // unsafe, but into a pocket with pearls we can split our way out of
+        bool dive = false; // unsafe, but a pocket with food worth going into (see evaluate)
         int newLength = 0;
         double score = -1e18;
     };
@@ -540,7 +678,7 @@ struct Brain {
         double score = 0.0;
         c.eats = inView[dest] && pearlNow[dest];
         if (c.eats)
-            score += params::EAT_NOW;
+            score += kingsFood(dest) ? -params::KING_FOOD_PENALTY : params::EAT_NOW;
         if (!inView[dest])
             score -= params::OUT_OF_VIEW;
         score -= params::REVISIT * heat(dest);
@@ -566,21 +704,23 @@ struct Brain {
         visit(dest, 0);
         owned[dest] = 1;
         queue[qt++] = dest;
-        double best = 0.0, sum = 0.0, pocket = 0.0;
+        double best = 0.0, sum = 0.0;
+        double pocketFood = c.eats ? 1.0 : 0.0; // expected pearls we can reach, undiscounted
         while (qh < qt) {
             int const t = queue[qh++];
             int const k = dist[t];
             if (t != dest && !(inView[t] && occId[t] >= 0)) {
-                double v = pearlBelief(t, round + 1 + k);
+                double v = kingsFood(t) ? 0.0 : pearlBelief(t, round + 1 + k);
                 if (v > 0.0) {
                     int const moves = 1 + k;
                     if (distE[t] < moves)
                         v *= params::ENEMY_CLOSER;
-                    if (distA[t] < moves || (distA[t] == moves && ownerA[t] < myId))
+                    // The king takes what is dropped for it, however many feeders are nearer.
+                    if (!amKing() && (distA[t] < moves || (distA[t] == moves && ownerA[t] < myId)))
                         v *= params::ALLY_CLOSER;
                     best = std::max(best, v * powBest[k]);
                     sum += v * powSum[k];
-                    pocket += v;
+                    pocketFood += v;
                 }
             }
             for (int d = 0; d < 4; d++) {
@@ -601,38 +741,90 @@ struct Brain {
         c.safe = reachedOwn || room >= roomyEnough(newLength);
         score += params::FOOD_BEST * best + params::FOOD_SUM * sum;
 
-        // A small dragon may dive into a dead end for its pearls: once it is at least 4 long it
-        // splits its way out (the child's head starts at the tail, facing the exit), losing only
-        // the stuck parent. Bigger dragons and empty pockets stay off limits.
-        c.dive = !c.safe && newLength <= params::DIVE_MAX_LEN && pocket >= params::DIVE_MIN_POCKET &&
-                 newLength + pocket >= 4.0;
-        if (c.dive)
-            score -= params::DIVE_PENALTY;
-        else if (!c.safe)
+        // Diving: most pearls on maze maps spawn in 1-wide lanes and dead ends, which are never
+        // "safe". Going in is a priced risk rather than a death sentence when the pocket has food:
+        //  - if eating it makes us 4+ long, we can split our way out later (the child takes our
+        //    tail and faces out of the pocket), losing only the parent we leave behind;
+        //  - a small dragon may die in there while we have dragons to spare: it eats first, and
+        //    half its body comes back as pearls for the ally that follows it in.
+        // Only where kelp makes the pocket: when other dragons are what boxes us in, the old
+        // rule (avoid, or split out) stays.
+        if (!c.safe && params::DIVE && newLength <= params::DIVE_MAX_LEN && pocketFood >= params::DIVE_MIN_FOOD &&
+            (!params::DIVE_WALLS_ONLY || wallRoom(dest, roomyEnough(newLength)) < roomyEnough(newLength))) {
+            bool const canSplitLater = unitsNow < game.get_unit_limit();
+            if (canSplitLater && newLength + static_cast<int>(pocketFood) >= params::DIVE_ESCAPE_LEN) {
+                c.dive = true;
+                score -= params::DIVE_ESCAPE_COST;
+            } else if (newLength <= params::DIVE_MAX_DEATH_LEN && unitsNow >= params::DIVE_MIN_UNITS) {
+                c.dive = true;
+                score -= params::DIVE_SEG_COST * newLength;
+            }
+        }
+        if (!c.safe && !c.dive)
             score -= params::TRAPPED - 50.0 * std::min(c.space, newLength);
-        else
+        else if (c.safe)
             score += 0.5 * std::min(c.space, 3 * newLength);
         // A long dragon (our king, usually) dies or has to split when boxed in: keep it in the open.
         if (newLength >= params::KING_ROOM_LEN)
-            score += params::KING_ROOM * std::min(c.space, params::KING_ROOM_TILES_PER_LEN * newLength);
+            score += (race > 0 && king.id == myId ? 2.0 : 1.0) * params::KING_ROOM *
+                     std::min(c.space, params::KING_ROOM_TILES_PER_LEN * newLength);
 
         // An enemy that can reach dest next turn may trade heads with us.
         if (threatLen[dest] < INF) {
             int const disadvantage = newLength - threatLen[dest];
-            double penalty = disadvantage > 0 ? params::THREAT_PER_LEN * disadvantage : params::THREAT_EVEN;
-            if (unitsNow <= params::LOW_UNITS)
-                penalty = std::max(penalty, params::THREAT_LOW_UNITS);
-            score -= penalty;
+            double scale = defensive ? params::ADAPT_THREAT_SCALE : 1.0;
+            if (race != 0 && king.id == myId)
+                scale *= race > 0 ? params::RACE_KING_SAFE : params::RACE_KING_BOLD;
+            score -= scale * (disadvantage > 0 ? params::THREAT_PER_LEN * disadvantage : params::THREAT_EVEN);
         }
-        if (kingTile >= 0 && kingDist[dest] < INF)
-            score += params::FEED_PULL_LINEAR
-                         ? params::FEED_ATTRACT - params::FEED_PULL_PER_STEP * std::min(kingDist[dest], 60)
-                         : params::FEED_ATTRACT / (1.0 + kingDist[dest]);
+        if (kingTile >= 0 && kingDist[dest] < INF) {
+            score += params::FEED_ATTRACT / (1.0 + kingDist[dest]);
+            // From afar the pull above is flat: reward every step that closes the distance.
+            if (kingDist[head] < INF)
+                score += params::KING_APPROACH * (kingDist[head] - kingDist[dest]);
+        }
         if (preyGain > 0.0 && preyDist[dest] < INF)
             score += (aggressive ? params::HUNT_ATTRACT_AGGRO : params::HUNT_ATTRACT) *
                      std::min(preyGain, params::HUNT_GAIN_CAP) / (1.0 + preyDist[dest]);
         score += std::uniform_real_distribution<double>(0.0, 1.0)(rng);
         c.score = score;
+    }
+
+    // In-game feedback (each part behind its own switch).
+    void adaptToGame(int units) {
+        defensive = false;
+        if (params::ADAPT_NUMBERS) {
+            auto const e = ct.get_sonar_echoes();
+            double const a = static_cast<double>(allyHeads.size()) + e.ally_head;
+            double const n = static_cast<double>(enemyHeads.size()) + e.enemy_head;
+            allyEma = params::ADAPT_DECAY * allyEma + (1.0 - params::ADAPT_DECAY) * a;
+            enemyEma = params::ADAPT_DECAY * enemyEma + (1.0 - params::ADAPT_DECAY) * n;
+            double const ratio = (allyEma + 0.5) / (enemyEma + 0.5);
+            if (ratio >= params::ADAPT_HI && units >= params::AGGRO_MIN_UNITS)
+                aggressive = true; // we outnumber them around here: attrition favours us
+            defensive = !aggressive && ratio <= params::ADAPT_LO;
+        }
+        race = 0;
+        if (params::RACE_AWARE && round >= params::RACE_ROUND && king.id >= 0 && enemyMax > 0 &&
+            round - enemyMaxRound <= params::ENEMY_MAX_STALE) {
+            if (king.len >= enemyMax + params::RACE_MARGIN)
+                race = 1;
+            else if (enemyMax >= king.len + params::RACE_MARGIN)
+                race = -1;
+            // Behind: small dragons take risks for kills and trades.
+            if (race < 0 && king.id != myId && units >= params::AGGRO_MIN_UNITS)
+                aggressive = true;
+        }
+    }
+
+    // Endgame with sonar: we are the king everyone is feeding.
+    bool amKing() const {
+        return params::SONAR && round >= params::KING_PULL_ROUND && king.id == myId;
+    }
+    // A pearl next to the king we feed is its food: leave it for it rather than eat it and
+    // pass on only half when we feed in turn.
+    bool kingsFood(int t) const {
+        return kingVisible && round >= params::CONSOLIDATE_ROUND && kingDist[t] <= params::KING_FOOD_RADIUS;
     }
 
     // `block` always holds staticBlock between searches; searches raise tiles and restore them.
@@ -652,6 +844,28 @@ struct Brain {
     }
 
     static int roomyEnough(int length) { return 2 * length + 4; }
+
+    // Tiles reachable from `start` through kelp and portals alone (other dragons ignored, our
+    // own body blocks), counting up to `cap`. Small means a lane or dead end in the terrain.
+    int wallRoom(int start, int cap) {
+        newSearch();
+        for (int t : body)
+            seen[t] = stamp;
+        int qh = 0, qt = 0;
+        visit(start, 0);
+        queue[qt++] = start;
+        while (qh < qt && qt < cap) {
+            int const t = queue[qh++];
+            for (int d = 0; d < 4 && qt < cap; d++) {
+                int const n = nbr[t * 4 + d];
+                if (n < 0 || seen[n] == stamp)
+                    continue;
+                visit(n, 0);
+                queue[qt++] = n;
+            }
+        }
+        return qt;
+    }
 
     // Whether a dragon of `length` with its head on `start` can survive: it reaches its own
     // body after that tile frees (so it can follow its tail forever), or finds lots of room.
@@ -681,7 +895,8 @@ struct Brain {
 
     // Surviving length if we split off the rear `child` segments now. The parent stays
     // put and moves next round; the child is the rear reversed, head at our old tail.
-    int splitValue(int child) {
+    // `longest`: count only the longest surviving piece (what matters at round 500).
+    int splitValue(int child, bool longest = false) {
         int const length = static_cast<int>(body.size());
         int const parentLen = length - child;
         // Child's view: its own body frees from its tail (our body[parentLen]) outward,
@@ -697,11 +912,11 @@ struct Brain {
         bool const childSafe = floodSafe(body[length - 1], child);
         restoreBlock();
 
-        // A stuck child of 4+ can split again on its own first turn: that grandchild is the
-        // child's rear, head at the child's tail (our body[parentLen]), so a chain of splits
-        // lets a piece out from the middle of a body whose both ends sit in dead ends.
+        // Chained split (from v2d): a stuck child of 4+ can split again on its own first turn.
+        // That grandchild is the child's rear, head at the child's tail (our body[parentLen]),
+        // so a piece gets out of the middle of a body whose both ends sit in dead ends.
         int chained = 0;
-        if (!childSafe && child >= 4) {
+        if (params::CHAIN_SPLIT && !childSafe && child >= 4) {
             int const grand = child - 2;
             ++ownScenario;
             for (int i = 0; i < length; i++) {
@@ -729,7 +944,8 @@ struct Brain {
         bool const parentSafe = floodSafe(body[0], parentLen);
         restoreBlock();
 
-        return (childSafe ? child : chained) + (parentSafe ? parentLen : 0);
+        int const childPart = childSafe ? child : chained, parentPart = parentSafe ? parentLen : 0;
+        return longest ? std::max(childPart, parentPart) : childPart + parentPart;
     }
 
     double heat(int t) const {
@@ -769,8 +985,14 @@ struct Brain {
                     continue;
                 for (int d = 0; d < 4; d++) {
                     int const n = nbr[t * 4 + d];
-                    if (n < 0 || seen[n] == stamp || (inView[n] && occId[n] >= 0))
+                    if (n < 0 || seen[n] == stamp)
                         continue;
+                    if (inView[n] && occId[n] >= 0) {
+                        // It cannot pass through a body, but it can end on one of our heads (a trade).
+                        if (params::THREAT_ON_OUR_HEADS && occHead[n] && occTeam[n] == myTeam)
+                            threatLen[n] = std::min(threatLen[n], e.len);
+                        continue;
+                    }
                     visit(n, k + 1);
                     queue[qt++] = n;
                     threatLen[n] = std::min(threatLen[n], e.len);
@@ -784,13 +1006,11 @@ struct Brain {
         if (units <= 1)
             return -1.0; // our last dragon: trading it loses the game
         int const gain = enemyLen - myLen;
-        if (units <= params::LOW_UNITS)
-            return gain >= params::LOW_UNITS_TRADE_GAIN ? gain : -1.0; // elimination is close
         if (gain > 0)
             return gain;
         // Even trades thin both swarms; worth it while we have dragons to spare, or when we
         // outnumber the enemies around us (their losses hurt them more).
-        if (gain == 0 && (aggressive || (round < params::CONSOLIDATE_ROUND && units >= params::TRADE_MIN_UNITS)))
+        if (gain == 0 && (aggressive || (!defensive && round < params::CONSOLIDATE_ROUND && units >= params::TRADE_MIN_UNITS)))
             return aggressive ? 1.0 : 0.5;
         return -1.0;
     }
@@ -881,171 +1101,30 @@ struct Brain {
             bfsFrom(prey, preyDist, nullptr);
     }
 
-    // -- sonar ---------------------------------------------------------------
-    // A king beacon is 64 bits: [check 16][type 3][x 7][y 7][len 10][round 9][id 12]. The check
-    // is keyed, so enemies who hear our pings (they stop at the first dragon, of either team)
-    // cannot forge them without the key.
-    static std::uint64_t mix(std::uint64_t z) {
-        z += 0x9E3779B97F4A7C15ULL;
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-        return z ^ (z >> 31);
-    }
-    static std::uint64_t checkOf(std::uint64_t payload) { return mix(payload ^ params::SONAR_KEY) & 0xFFFF; }
-
-    std::uint64_t encodeKing(KingNews const& k) const {
-        std::uint64_t const payload =
-            (1ULL << 45) | (static_cast<std::uint64_t>(k.tile % W) << 38) |
-            (static_cast<std::uint64_t>(k.tile / W) << 31) | (static_cast<std::uint64_t>(std::min(k.len, 1023)) << 21) |
-            (static_cast<std::uint64_t>(k.round & 511) << 12) | static_cast<std::uint64_t>(k.id & 4095);
-        return (checkOf(payload) << 48) | payload;
-    }
-
-    bool decodeKing(std::uint64_t m, KingNews& k) const {
-        std::uint64_t const payload = m & ((1ULL << 48) - 1);
-        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 1)
-            return false;
-        int const x = static_cast<int>((payload >> 38) & 127), y = static_cast<int>((payload >> 31) & 127);
-        if (x >= W || y >= H)
-            return false;
-        k.tile = idxOf(x, y);
-        k.len = static_cast<int>((payload >> 21) & 1023);
-        k.round = static_cast<int>((payload >> 12) & 511);
-        k.id = static_cast<int>(payload & 4095);
-        return k.round <= round;
-    }
-
-    // Split handoff: [check 16][type 3 = 2][count 5][2 bits per segment, up to 20]. The parent
-    // sends it out of its tail on the split turn; it lands on the child's tail, so the child
-    // knows its whole body on its first turn, even the part out of view.
-    static constexpr int HANDOFF_MAX = 20;
-
-    std::uint64_t encodeBody(std::vector<int> const& dirs) const {
-        int const count = std::min<int>(static_cast<int>(dirs.size()), HANDOFF_MAX);
-        std::uint64_t payload = (2ULL << 45) | (static_cast<std::uint64_t>(count) << 40);
-        for (int i = 0; i < count; i++)
-            payload |= static_cast<std::uint64_t>(dirs[i] & 3) << (2 * i);
-        return (checkOf(payload) << 48) | payload;
-    }
-
-    bool decodeBody(std::uint64_t m, std::vector<int>& dirs) const {
-        std::uint64_t const payload = m & ((1ULL << 48) - 1);
-        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 2)
-            return false;
-        int const count = static_cast<int>((payload >> 40) & 31);
-        if (count > HANDOFF_MAX)
-            return false;
-        dirs.clear();
-        for (int i = 0; i < count; i++)
-            dirs.push_back(static_cast<int>((payload >> (2 * i)) & 3));
-        return true;
-    }
-
-    // Pearl news: [check 16][type 3 = 3][round 9][three tiles, 12 bits each as x<<6|y]. Empty
-    // slots repeat the first tile. Only maps up to 64x64, which is every legal map.
-    std::uint64_t encodePearls(int seenRound, int const* tiles, int count) const {
-        auto pos = [&](int t) { return static_cast<std::uint64_t>(((t % W) << 6) | (t / W)); };
-        std::uint64_t payload = (3ULL << 45) | (static_cast<std::uint64_t>(seenRound & 511) << 36);
-        for (int i = 0; i < 3; i++)
-            payload |= pos(tiles[i < count ? i : 0]) << (24 - 12 * i);
-        return (checkOf(payload) << 48) | payload;
-    }
-
-    bool decodePearls(std::uint64_t m, int& seenRound, int* tiles) const {
-        std::uint64_t const payload = m & ((1ULL << 48) - 1);
-        if ((m >> 48) != checkOf(payload) || ((payload >> 45) & 7) != 3)
-            return false;
-        seenRound = static_cast<int>((payload >> 36) & 511);
-        if (seenRound > round)
-            return false;
-        for (int i = 0; i < 3; i++) {
-            int const v = static_cast<int>((payload >> (24 - 12 * i)) & 4095);
-            int const x = v >> 6, y = v & 63;
-            if (x >= W || y >= H)
-                return false;
-            tiles[i] = idxOf(x, y);
-        }
-        return true;
-    }
-
-    // Share pearls: what we see now first, then the freshest we have heard of. Each ping reaches
-    // the first dragon in its line; allies pass it on, so news crosses the map in a few turns.
-    void pearlSonar() {
-        if (!params::PEARL_SONAR)
-            return;
-        for (std::uint64_t m : ct.get_sonar_messages()) {
-            int seenRound, tiles[3];
-            if (!decodePearls(m, seenRound, tiles))
-                continue;
-            for (int t : tiles) {
-                // What we saw ourselves is never overridden by older news.
-                if (lastSeen[t] < seenRound && K.maxGap[t] != 0) {
-                    lastSeen[t] = seenRound;
-                    pearlSeen[t] = 1;
-                    heard[t] = 1;
-                }
-            }
-        }
-        std::vector<int> share;
-        for (int t = 0; t < N; t++)
-            if (pearlSeen[t] && lastSeen[t] >= 0 && round - lastSeen[t] <= params::PEARL_RELAY_AGE &&
-                (params::PEARL_RELAY || !heard[t]))
-                share.push_back(t);
-        if (share.empty())
-            return;
-        std::sort(share.begin(), share.end(), [&](int a, int b) { return lastSeen[a] > lastSeen[b]; });
-        int const n = std::min<int>(static_cast<int>(share.size()), 12);
-        int const directions = (n + 2) / 3;
-        for (int k = 0; k < directions; k++) {
-            int const count = std::min(3, n - 3 * k);
-            int const* tiles = share.data() + 3 * k;
-            int oldest = round;
-            for (int i = 0; i < count; i++)
-                oldest = std::min(oldest, lastSeen[tiles[i]]);
-            ct.send_sonar(Direction(DCH[k]), encodePearls(oldest, tiles, count));
-        }
-    }
-
-    static bool bigger(KingNews const& a, KingNews const& b) {
-        return a.len > b.len || (a.len == b.len && a.id < b.id);
-    }
-
-    void consider(KingNews const& k) {
-        if (k.id == (myId & 4095) || round - k.round > params::KING_FRESH)
-            return;
-        if (news.id < 0 || (k.id == news.id && k.round >= news.round) || bigger(k, news))
-            news = k;
-    }
-
-    // Take in what we heard and saw, decide whether we are the king, and pass the news on.
-    void sonarTurn(int length) {
-        if (!params::SONAR)
-            return;
-        if (news.id >= 0 && round - news.round > params::KING_FRESH)
-            news = {};
-        for (std::uint64_t m : ct.get_sonar_messages()) {
-            KingNews k;
-            if (decodeKing(m, k))
-                consider(k);
-        }
-        for (auto const& a : allyHeads)
-            consider({a.id & 4095, a.tile, a.len, round});
-        if (round < params::CONSOLIDATE_ROUND - params::BEACON_LEAD)
-            return;
-        KingNews const me{myId & 4095, body.front(), length, round};
-        amKing = news.id < 0 || bigger(me, news);
-        KingNews const& say = amKing ? me : news;
-        std::uint64_t const message = encodeKing(say);
-        for (auto const direction : Direction::get_direction_list())
-            ct.send_sonar(direction, message);
-    }
-
     // Late game: the longest ally in view that we should feed, if any.
     void chooseKing(int length, int units) {
         kingTile = -1;
         kingLen = 0;
         kingVisible = false;
-        if (round < params::CONSOLIDATE_ROUND || units <= params::FEED_KEEP_UNITS)
+        if (units <= params::FEED_KEEP_UNITS)
+            return;
+        // With sonar the whole team agrees on one king: the longest dragon anyone has heard of.
+        // Head for it from KING_PULL_ROUND, feed it once it is in view.
+        if (params::SONAR && king.id >= 0 && round - king.round <= params::KING_STALE) {
+            if (king.id == myId || round < params::KING_PULL_ROUND)
+                return;
+            kingTile = idxOf(king.x, king.y);
+            kingLen = king.len;
+            for (auto const& a : allyHeads) {
+                if (a.id == king.id) {
+                    kingTile = a.tile;
+                    kingVisible = true;
+                }
+            }
+            bfsFrom({{-1, kingTile, kingLen}}, kingDist, nullptr);
+            return;
+        }
+        if (round < params::CONSOLIDATE_ROUND)
             return;
         // Any ally bigger than us (ties to the lower id) is a king: feeding it makes it bigger
         // still, so feeders converge on one dragon instead of all waiting for a big one.
@@ -1059,19 +1138,16 @@ struct Brain {
                 kingId = a.id;
             }
         }
-        kingVisible = kingTile >= 0;
-        if (!kingVisible && params::SONAR && news.id >= 0 && !amKing && news.len >= length + params::FEED_MARGIN &&
-            (news.len > length || news.id < (myId & 4095))) {
-            kingTile = news.tile;
-            kingLen = news.len;
-        }
-        if (kingTile >= 0)
+        if (kingTile >= 0) {
+            kingVisible = true;
             bfsFrom({{-1, kingTile, kingLen}}, kingDist, nullptr);
+        }
     }
 
     // Die next to the king: our body becomes pearls right where it is about to go.
     bool tryFeed() {
-        if (kingTile < 0 || !kingVisible || kingDist[body.front()] > params::FEED_DIST)
+        if (kingTile < 0 || !kingVisible || round < params::CONSOLIDATE_ROUND ||
+            kingDist[body.front()] > params::FEED_DIST)
             return false;
         ct.do_split(1); // an illegal split: we die with no valid action
         plannedPath.clear();
@@ -1084,15 +1160,20 @@ struct Brain {
         if (round >= params::CONSOLIDATE_ROUND || length < params::SWARM_SPLIT_LEN || !bodyKnown ||
             units >= game.get_unit_limit() || (best.eats && !params::SPLIT_WHILE_EATING))
             return false;
-        int const child = length / 2;
-        if (!ct.can_split(child))
+        // The parent stands still for a turn, so not where an enemy head can reach it.
+        if (threatLen[body.front()] < INF)
             return false;
-        // The parent stands still for a turn: by default not where an enemy head can reach it.
-        if (threatLen[body.front()] < INF && !params::SPLIT_THREAT_OK)
-            return false;
-        // Safety 2: both halves safe. Safety 1: at most a 2-segment piece may be lost.
-        int const needed = params::SPLIT_SAFETY >= 2 ? length : length - 2;
-        if (splitValue(child) < needed)
+        // Halves, or one off, preferring a cut the child's body message can reach. A child that
+        // could neither see its whole body nor be told it waits: next turn the body may be straight.
+        int child = 0;
+        for (int c : {length / 2, length / 2 + 1, length / 2 - 1}) {
+            if (ct.can_split(c) && splitValue(c) == length &&
+                (!params::SONAR || !params::SPLIT_WAITS_FOR_HANDOFF || childKnowsBody(c))) {
+                child = c;
+                break;
+            }
+        }
+        if (child == 0)
             return false;
         split(child);
         ct.set_indicator_string("swarm split");
@@ -1109,30 +1190,23 @@ struct Brain {
 
     void split(int child) {
         ct.do_split(child);
+        if (params::SONAR)
+            sendChildBody(child);
         plannedPath.clear(); // the parent stays put
-        // Hand the child its body: from its head (our tail) towards our new tail.
-        int const length = static_cast<int>(body.size());
-        if (params::HANDOFF && length == ct.get_length() && child <= length && length - child >= 1) {
-            std::vector<int> dirs;
-            for (int i = length - 1; i > length - child; i--) {
-                int found = -1;
-                for (int d = 0; d < 4; d++)
-                    if (nbr[body[i] * 4 + d] == body[i - 1])
-                        found = d;
-                if (found < 0)
-                    return;
-                dirs.push_back(found);
-            }
-            // Sent against our heading, a ping leaves through our tail, straight into the child.
-            ct.send_sonar(ct.get_dir().get_opposite(), encodeBody(dirs));
-        }
     }
 
     void turn() {
+        outboxSet.fill(false);
+        decide();
+        sendSonar();
+    }
+
+    void decide() {
         round = game.get_round_num();
         absorbView();
         if (!identified)
             identifyMap();
+        readSonar();
         updateBody();
         markVisited(body.front());
 
@@ -1158,9 +1232,12 @@ struct Brain {
         aggressive = units >= params::AGGRO_MIN_UNITS && !enemyHeads.empty() &&
                      static_cast<double>(allyHeads.size() + 1) >= params::AGGRO_RATIO * enemyHeads.size();
         computeThreats();
-        sonarTurn(length);
-        pearlSonar();
+        updateKing(length);
+        adaptToGame(units);
         chooseKing(length, units);
+        if (params::DEBUG_SONAR && round >= params::KING_PULL_ROUND && round % 25 == 0)
+            ct.output_log("king", king.id, king.len, "age", round - king.round, "me", myId, length,
+                          "dist", kingTile >= 0 ? kingDist[body.front()] : -1, "vis", kingVisible ? 1 : 0);
         choosePrey(length, units);
 
         Candidate cands[4];
@@ -1191,11 +1268,18 @@ struct Brain {
 
         // Trapped (or worse): compare moving on with every split, by length expected to survive.
         bool const bodyKnown = static_cast<int>(body.size()) == length;
+        // (A dive is unsafe on purpose: going in is the plan, splitting out comes later.)
         if ((!best || (!best->safe && !best->dive)) && canSplit && bodyKnown) {
             // An unsafe move buys time, which is worth a little in case others move away.
+            // In the endgame a long dragon (usually the king) is scored by its longest piece:
+            // splitting to "save" both halves only shrinks the dragon that decides the game, so
+            // moving on counts as keeping all of it for as long as there is room to move.
+            bool const keepWhole = params::ENDGAME_KEEP_WHOLE && round >= params::CONSOLIDATE_ROUND &&
+                                   length >= params::KING_ROOM_LEN;
             double moveValue = 0.0;
             if (best)
-                moveValue = 0.25 * best->newLength * std::min(1.0, static_cast<double>(best->space) / best->newLength);
+                moveValue = (keepWhole ? 1.0 : 0.25) * best->newLength *
+                            std::min(1.0, static_cast<double>(best->space) / best->newLength);
             int bestChild = 0;
             double bestValue = moveValue;
             std::vector<int> sizes{2, 3, length / 4, length / 3, length / 2, 2 * length / 3, 3 * length / 4,
@@ -1205,12 +1289,16 @@ struct Brain {
             for (int child : sizes) {
                 if (child < 2 || child > length - 2)
                     continue;
-                double const v = splitValue(child);
-                if (v > bestValue) {
+                double const v = splitValue(child, keepWhole);
+                if (v > bestValue || (v == bestValue && bestChild > 0 && childKnowsBody(child) && !childKnowsBody(bestChild))) {
                     bestValue = v;
                     bestChild = child;
                 }
             }
+            // Every move is fatal and no split looks safe: split anyway. The rear leaves facing
+            // away from the head (out of the dead end we drove into) and lives at least a while.
+            if (!best && bestChild == 0 && params::DIVE)
+                bestChild = length - 2;
             if (bestChild > 0) {
                 split(bestChild);
                 ct.set_indicator_string("escape split " + std::to_string(bestChild));

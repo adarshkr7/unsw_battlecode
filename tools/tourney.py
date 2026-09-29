@@ -97,21 +97,25 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bot1")
     ap.add_argument("bot2")
-    ap.add_argument("--maps", help="comma-separated map names (default: every map in maps/)")
+    ap.add_argument("--maps", help="comma-separated map names (default: every map in the maps folder)")
+    ap.add_argument("--maps-dir", default="maps", help="folder of .map files (e.g. maps_swapped: team spawns swapped)")
     ap.add_argument("--seeds", type=int, default=2, help="seeds per map (each played both ways)")
     ap.add_argument("--seed-base", type=int, default=1000)
-    ap.add_argument("-j", "--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--native", action="store_true", help="run native binaries instead of the judge sandbox")
     ap.add_argument("--replays", help="keep replays of games bot1 did not win in this folder")
     ap.add_argument("--no-longest", action="store_true", help="skip reading each game's longest dragon from its replay")
+    ap.add_argument("--early", action="store_true", help="also report rounds 50/150 (slow: decodes whole replays)")
+    ap.add_argument("--keep-replays", action="store_true", help="keep every replay (see tools/replay_summary.py)")
     ap.add_argument("--json", help="write every game's result to this file")
     args = ap.parse_args()
 
     global PYTHON
     PYTHON = tool_python()
     sandbox = not args.native
-    names = [m.strip() for m in args.maps.split(",")] if args.maps else sorted(p.stem for p in (ROOT / "maps").glob("*.map"))
-    maps = [str(ROOT / "maps" / f"{n}.map") for n in names]
+    maps_dir = ROOT / args.maps_dir
+    names = [m.strip() for m in args.maps.split(",")] if args.maps else sorted(p.stem for p in maps_dir.glob("*.map"))
+    maps = [str(maps_dir / f"{n}.map") for n in names]
     for m in maps:
         if not pathlib.Path(m).is_file():
             sys.exit(f"no such map: {m}")
@@ -159,7 +163,15 @@ def main() -> None:
     if replay_tmp and not args.no_longest:
         files = [r["replay"] for r in results if r["ok"] and r["replay"] and pathlib.Path(r["replay"]).is_file()]
         longest = {}
-        for i in range(0, len(files), 40):
+        # Fast pass: each replay's result section only.
+        done = subprocess.run(["node", str(ROOT / "tools" / "replay_results.cjs"), str(replay_tmp)],
+                              capture_output=True, text=True, cwd=ROOT)
+        if done.returncode == 0:
+            for item in json.loads(done.stdout):
+                if "error" not in item:
+                    longest[item["file"]] = {"teamA": {"longestDragon": item["A"]["longest"]},
+                                             "teamB": {"longestDragon": item["B"]["longest"]}}
+        for i in range(0, len(files) if args.early else 0, 40):
             chunk = files[i:i + 40]
             done = subprocess.run(["node", str(ROOT / "tools" / "replay.cjs"), "--json", "--result-only",
                                    "--at", "50,150", *chunk],
@@ -260,7 +272,9 @@ def main() -> None:
         for msg, n in counter.most_common(5):
             print(f"errors ({'bot1' if k == 1 else 'bot2' if k == 2 else 'engine'}) x{n}: {msg}")
 
-    if replay_tmp and not args.replays:
+    if replay_tmp and args.keep_replays:
+        print(f"replays kept in {replay_tmp} (python tools/replay_summary.py {replay_tmp} BOT1 BOT2)")
+    elif replay_tmp and not args.replays:
         shutil.rmtree(replay_tmp, ignore_errors=True)
     elif replay_tmp:
         kept = 0
