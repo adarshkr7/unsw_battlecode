@@ -11,7 +11,7 @@
 
 namespace sonar {
 
-enum Type : std::uint64_t { BODY = 1, KING = 2 };
+enum Type : std::uint64_t { BODY = 1, KING = 2, ENEMY = 3 };
 
 inline constexpr std::uint64_t KEY = 0xA11C0DEDB0A7F00Dull;
 inline constexpr int PAYLOAD_BITS = 52;
@@ -36,7 +36,7 @@ inline std::uint64_t pack(Type type, std::uint64_t payload) {
 
 inline bool unpack(std::uint64_t msg, Type& type, std::uint64_t& payload) {
     std::uint64_t const t = msg & 7;
-    if (t != BODY && t != KING)
+    if (t != BODY && t != KING && t != ENEMY)
         return false;
     payload = (msg >> 12) ^ (mix(KEY + t) & PAYLOAD_MASK);
     if (((msg >> 3) & 0x1FF) != check(t, payload))
@@ -72,6 +72,28 @@ inline King unpackKing(std::uint64_t p) {
     k.round = static_cast<int>((p >> 34) & 0x1FF);
     k.enemyMax = static_cast<int>((p >> 43) & 0xFF);
     return k;
+}
+
+// ENEMY: the longest enemy head the sender knows of, and where it was (their king, to hunt).
+struct Enemy {
+    int id = -1, len = 0, x = 0, y = 0, round = -1000;
+};
+inline std::uint64_t packEnemy(Enemy const& e) {
+    std::uint64_t p = static_cast<std::uint64_t>(e.id & 0xFFF);
+    p |= static_cast<std::uint64_t>(e.len & 0xFF) << 12;
+    p |= static_cast<std::uint64_t>(e.x & 0x7F) << 20;
+    p |= static_cast<std::uint64_t>(e.y & 0x7F) << 27;
+    p |= static_cast<std::uint64_t>(e.round & 0x1FF) << 34;
+    return pack(ENEMY, p);
+}
+inline Enemy unpackEnemy(std::uint64_t p) {
+    Enemy e;
+    e.id = static_cast<int>(p & 0xFFF);
+    e.len = static_cast<int>((p >> 12) & 0xFF);
+    e.x = static_cast<int>((p >> 20) & 0x7F);
+    e.y = static_cast<int>((p >> 27) & 0x7F);
+    e.round = static_cast<int>((p >> 34) & 0x1FF);
+    return e;
 }
 
 } // namespace sonar

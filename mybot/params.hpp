@@ -27,6 +27,8 @@ inline constexpr bool CHAIN_SPLIT = false;
 inline constexpr bool THREAT_ON_OUR_HEADS = false;
 // Delay a swarm split whose child could neither see its body nor be told it by sonar.
 inline constexpr bool SPLIT_WAITS_FOR_HANDOFF = true;
+// 10. When no half is safe, also try budding 2 off the tail and the reversal (child = length - 2).
+inline constexpr bool SWARM_SPLIT_CUTS = false;
 // From this round on: no more swarm splits; small dragons feed pearls to a big ally, so we
 // finish with one long dragon (the winner at round 500 is the team with the longest one).
 inline constexpr int CONSOLIDATE_ROUND = 380;
@@ -68,6 +70,16 @@ inline constexpr bool DOOMED_BLIND_SPLIT = true;  // doomed with a partly known 
 inline constexpr bool FINAL_MERGE = true;     // from FINAL_MERGE_ROUND, feed down to one dragon
 inline constexpr int FINAL_MERGE_ROUND = 450;
 inline constexpr double FEED_ATTRACT = 400.0; // pull towards a king we could feed
+// v8 ideas (docs/v8_ideas.md). The defaults below reproduce v4.4.
+// 3. Keep the king unless another dragon is this much longer (0 = switch on any gain, ties to the lower id).
+inline constexpr int KING_SWITCH_MARGIN = 0;
+// 4. Feed only a king at least this long and this many times our length (before the final merge).
+inline constexpr int FEED_MIN_KING_LEN = 0;
+inline constexpr double FEED_KING_RATIO = 0.0;
+// 5. Only dragons this close (in steps) are pulled toward the king; the rest keep foraging (0 = all).
+inline constexpr int KING_PULL_RADIUS = 0;
+// 6. Longer dragons don't feed (or head for the king) before FINAL_MERGE_ROUND: they forage.
+inline constexpr int FEED_MAX_LEN = 999;
 
 // --- Move scoring weights -------------------------------------------------------
 inline constexpr double EAT_NOW = 400.0;         // stepping onto a pearl this turn
@@ -84,6 +96,34 @@ inline constexpr double KING_ROOM = 6.0;
 inline constexpr int KING_ROOM_TILES_PER_LEN = 3;
 inline constexpr double UNKNOWN_PORTAL = 3000.0; // stepping into a portal whose far end we do not know
 inline constexpr double OUT_OF_VIEW = 1500.0;    // landing on a tile we cannot see (through a portal)
+// 7. Spread out before CONSOLIDATE_ROUND: a penalty for ending next to an ally head, and a reward
+// per step from the nearest ally head in view (up to ALLY_SPREAD_CAP steps).
+inline constexpr double ALLY_ADJ_PENALTY = 0.0;
+inline constexpr double ALLY_SPREAD = 0.0;
+inline constexpr int ALLY_SPREAD_CAP = 4;
+// 11. Standing on a tile whose pearl is due while our body still covers it (the attempt is lost).
+inline constexpr double SPAWN_BLOCK_COST = 0.0;
+// 13. The king (10+ long) fears enemy reach this many times more.
+inline constexpr double KING_THREAT_MULT = 1.0;
+// 15. Tail strike: an enemy head next to our tail tip, at least this long, gets a 2-long child split off
+// right there (it moves last this round and rams it). From CONSOLIDATE_ROUND a KING_ROOM_LEN+ dragon only
+// does it for an enemy of TAIL_STRIKE_KING_MIN+.
+inline constexpr bool TAIL_STRIKE = false;
+inline constexpr int TAIL_STRIKE_MIN = 3;
+inline constexpr int TAIL_STRIKE_KING_MIN = 6;
+// 16. Pocket seal: per enemy segment, for a safe move that leaves an enemy head within SEAL_RADIUS
+// (Manhattan) without enough room to live (it dies against us, or splits and loses 2).
+inline constexpr double SEAL_BONUS = 0.0;
+inline constexpr int SEAL_RADIUS = 4;
+// 17. Steal their king's food: pearls within STEAL_RADIUS steps of an enemy head showing STEAL_MIN_LEN+
+// segments are worth this much more (1.0 = double).
+inline constexpr double STEAL_BONUS = 0.0;
+inline constexpr int STEAL_MIN_LEN = 6;
+inline constexpr int STEAL_RADIUS = 2;
+// 18. Shed the head: when every move leaves a shorter enemy able to reach our head, a SHED_MIN_LEN+
+// dragon splits off all but its front 2 (a ram then costs us 2, and the rest leaves from the tail).
+inline constexpr bool SHED = false;
+inline constexpr int SHED_MIN_LEN = 6;
 inline constexpr double REVISIT = 40.0;          // per unit of recent-visit heat on the destination
 inline constexpr double REVISIT_DECAY = 0.95;    // heat decay per round
 
@@ -107,6 +147,16 @@ inline constexpr int KING_PULL_ROUND = 340;   // from here, head for the king we
 inline constexpr double KING_APPROACH = 40.0; // per step closer to that king
 inline constexpr int KING_FOOD_RADIUS = 3;         // pearls this close to the king are its own
 inline constexpr double KING_FOOD_PENALTY = 300.0; // for a feeder that eats one anyway
+// 12. Hunt the enemy king: relay the longest enemy head seen (ENEMY pings), and pull our small
+// dragons within HUNT_KING_RADIUS steps toward it. tryStrike takes the trade once it is in reach.
+inline constexpr bool HUNT_KING = false;
+inline constexpr int HUNT_KING_ROUND = 300;     // from here
+inline constexpr int HUNT_KING_MIN_LEN = 6;     // an enemy showing at least this many segments (view only bounds it)
+inline constexpr int HUNT_KING_MAX_LEN = 3;     // hunters are at most this long
+inline constexpr int HUNT_KING_MIN_UNITS = 4;   // and we have this many dragons
+inline constexpr int HUNT_KING_RADIUS = 20;     // steps from its last known head
+inline constexpr int HUNT_KING_STALE = 10;      // rounds a sighting counts
+inline constexpr double HUNT_KING_ATTRACT = 60.0; // per step closer
 
 // --- In-game feedback --------------------------------------------------------------
 // Numbers war: ally vs enemy heads around us (view + sonar echoes), smoothed.

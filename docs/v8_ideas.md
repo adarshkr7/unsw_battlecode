@@ -157,6 +157,88 @@ Caveat: our opponents here were weaker than the top teams' fields, and the data 
 - Once v4.4 (bot 10043) has ladder games, run the section 2 profile on them to see whether `FINAL_MERGE` and
   `ENDGAME_KEEP_WHOLE` already moved the endgame numbers.
 
+## 6. Implementation in `mybot`
+
+Every idea is a setting in `mybot/params.hpp`, and the defaults reproduce v4.4. Checked on 16 games against v4.2
+on four maps: `mybot` and `bots/v4.4` gave identical winners, rounds, deaths, lengths and CPU points.
+
+| Idea | Setting (v4.4 value) | Variant under test |
+|---|---|---|
+| 1. Grow a king before the switch | `KING_GROW_ROUND` (999). From that round the king also keeps itself whole when trapped (`ENDGAME_KEEP_WHOLE`) | `v8_grow280`: 280 |
+| 2. Switch earlier | `CONSOLIDATE_ROUND` (380), `KING_PULL_ROUND` (340) | `v8_cons330`: 330 / 300; `v8_grow280_cons330`: with idea 1 |
+| 3. One stable king | `KING_SWITCH_MARGIN` (0) | `v8_margin3`: 3 |
+| 4. Feed only a real king | `FEED_MIN_KING_LEN` (0), `FEED_KING_RATIO` (0) | `v8_feedrule`: 8 and 2× |
+| 5. Feed opportunistically | `KING_PULL_RADIUS` (0 = everyone is pulled) | `v8_pull12`: 12 steps |
+| 6. Delay merges of long dragons | `FEED_MAX_LEN` (999) | `v8_feedmax4`: 4 |
+| 7. Spread from ally heads | `ALLY_ADJ_PENALTY` (0), `ALLY_SPREAD` (0), `ALLY_SPREAD_CAP` (4) | `v8_spread`: 40 and 30 a step |
+| 8. Re-test diving | `DIVE` (true), `DIVE_MAX_DEATH_LEN` (3) | `v8_nodive`, `v8_dive2` |
+| 9. Fewer even trades | `TRADE_MIN_UNITS` (6) | `v8_trade12`: 12 |
+| 10. More split cuts | `SWARM_SPLIT_CUTS` (false): also try a 2-bud and the reversal when no half is safe | `v8_cuts` |
+| 11. Keep spawn tiles clear | `SPAWN_BLOCK_COST` (0): moving onto a tile whose pearl is due while our body covers it | `v8_spawn`: 150 |
+| 12. Hunt their king | `HUNT_KING` (false) and `HUNT_KING_*`. A new ENEMY sonar message (type 3) carries the longest enemy head seen; one direction a turn, rotating, sends it instead of KING | `v8_hunt` |
+| 13. Guard the king | `KING_THREAT_MULT` (1) | `v8_guard`: 2× |
+| 14. Survive wipe-outs | `ADAPT_NUMBERS` (false), an existing switch: no even trades when outnumbered locally | `v8_adapt` |
+| 15. Tail strike | `TAIL_STRIKE` (false): an enemy head of 3+ (6+ for our endgame king) next to our tail tip gets a 2-long child split off there, which moves last this round and rams it | `v8_tail` |
+| 16. Pocket seal | `SEAL_BONUS` (0), `SEAL_RADIUS` (4): per enemy segment, for a safe move that leaves a nearby enemy head without room to live | `v8_seal`: 150 |
+| 17. Steal their king's food | `STEAL_BONUS` (0): pearls within 2 of an enemy head showing 6+ segments are worth more | `v8_steal`: double |
+| 18. Shed the head | `SHED` (false): a 6+ dragon that a shorter enemy can reach after every move splits off all but its front 2 | `v8_shed` |
+| More aggression | `TRADE_MIN_UNITS` = 3 (even trades from 3 dragons) | `v8_aggro` |
+| Value long kills fully | `HUNT_GAIN_CAP` = 30 (was 10: a 30-long king pulled hunters like a 12-long) | `v8_huntcap` |
+
+Ideas 12, 15, 17 and 18 target top-team behaviour (early kings, rammers) that v4.4 rarely shows, so they are
+also tested against `bots/cheji_clone` (behaviour-cloned cheji), compared with v4.4's own result against it.
+
+**What the wipe-out study found (idea 14).** Of our 12 ladder losses by elimination:
+- 3 were the edited-Dilemma bug: 5 spawn dragons, never split, over by round 31–80. v4.4's map fixes cover these.
+- In the other 9, the opponent had 2–5× our dragon count by round 100–150, and 1-for-1 head-on trades drained us
+  (our head-on deaths match theirs almost exactly). v4.4 takes even trades whenever it has 6+ dragons,
+  whatever the enemy's numbers. Ideas 9 and 14 address this.
+- Mirror tests against v4.4 rarely create that imbalance, which may be why `ADAPT_NUMBERS` tested neutral before.
+
+**Why hunting can't show up against v4.4.** Hunting needs a long enemy dragon in view (6+ visible segments; a view
+only bounds an enemy's length from below) while we still have small dragons. v4.4's king only grows after round
+380, and by round 400 our small dragons have mostly fed. Test idea 12 against an early-king opponent, for example
+the best tier-1 variant.
+
+## 7. Results
+
+**Everything on at once (`v8_all`, 28 Sep).** 240 games against v4.4 on all 15 maps:
+
+| | Score | Worst maps | Best maps |
+|---|---|---|---|
+| With map data | **96–144 (40%)** | Dilemma 0–16, Devil 1–15, Stronghold 1–15, Schooltime 4–12 | Big Empty 13–3, Colosseum and Default Small 10–6 |
+| No map data (both bots) | **106–132–1 (45%)** | Dilemma 0–16, Stronghold 2–14, Devil 3–13, Trauma 3–12 | Big Empty 15–1, Autarky 12–4, Trophy 10–6 |
+
+Two separate problems:
+- **The opening.** On Dilemma we are down to one dragon by round 50 in every game; on Devil we trail 11 dragons
+  to 19 at round 50. A Dilemma-only check of each idea alone (2 games each) found two causes: spreading from ally
+  heads (idea 7) and fewer even trades (idea 9) each lost 0–2. Every other idea split 1–1, as v4.4 does against
+  itself.
+- **The endgame.** The early king works: on Schooltime and Stronghold `v8_all` is far ahead by round 300
+  (Stronghold total 102 vs 51, Schooltime longest 9 vs 5). But it loses the round-500 tiebreak (Stronghold
+  longest 32 vs 49): the stricter feeding rules keep our length spread over several dragons.
+
+**Each idea alone** (120 games each against v4.4 on the 10 ladder maps; one standard error is about ±4.6%):
+
+| Idea | Score | Verdict |
+|---|---|---|
+| 3. Stable king (`KING_SWITCH_MARGIN=3`) | 71–49 (59%) | keep (about 2 standard errors) |
+| 11. Keep spawn tiles clear (`SPAWN_BLOCK_COST=150`) | 66–1–53 (55%) | keep |
+| 5. Pull only within 12 steps | 63–57 (52.5%) | even |
+| 8b. Diving, deaths only at length 2 | 62–58 (52%) | even |
+| 9. Fewer even trades (`TRADE_MIN_UNITS=12`) | 61–59 (51%) | even, but lost both Dilemma games |
+| 14. No even trades when outnumbered (`ADAPT_NUMBERS`) | 61–1–58 (51%) | even |
+| 10. More split cuts | 60–60 (50%) | even |
+| 13. King fears reach 2× | 60–60 (50%) | even |
+| 8a. No diving | 59–61 (49%) | drop |
+| 4. Feed only a real king | 57–63 (48%) | drop |
+| 1. Early king at 280 | 56–64 (47%) | drop |
+| 6. Long dragons don't feed before 450 | 55–65 (46%) | drop |
+| 7. Spread from ally heads | 41–1–78 (35%) | drop |
+| 2. Switch at 330 | 40–80 (33%) | drop |
+
+(Split cuts took 24,361 s only because the laptop slept from 00:08 to 06:47 in the middle of it.)
+
 **Reproduce section 2** (`results/` is git-ignored, so the scripts are only in the main checkout):
 ```
 node tools/replay.cjs results/ladder/*.replay --json > ladder.json && node results/allred/profile.cjs < ladder.json
