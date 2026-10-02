@@ -44,8 +44,16 @@ def tool_python() -> str:
 def build(bot: str, sandbox: bool) -> str:
     """Build once up front so parallel games never race to compile."""
     if sandbox:
-        code = ("import pathlib, sys\nfrom unswbc import clangtool\n"
-                "print(clangtool.build(pathlib.Path(sys.argv[1])))")
+        # The toolkit's wasm cache is keyed on .c/.cpp files only, so an edit to a header such as
+        # params.hpp would reuse the old build: drop cached builds older than any source file.
+        code = ("import pathlib, sys\nfrom unswbc import clangtool\nfrom unswbc.sandbox import _cache_dir\n"
+                "d = pathlib.Path(sys.argv[1])\n"
+                "src = ('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx')\n"
+                "newest = max(p.stat().st_mtime for p in d.rglob('*') if p.is_file() and p.suffix in src)\n"
+                "for w in (_cache_dir() / 'wasmbots').glob(d.resolve().name + '-*.wasm'):\n"
+                "    if w.stat().st_mtime < newest:\n"
+                "        w.unlink()\n"
+                "print(clangtool.build(d))")
     else:
         code = ("import pathlib, sys\nfrom unswbc.project import Project\n"
                 "out = Project.from_dir(sys.argv[1]).compile()\n"
