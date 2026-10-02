@@ -16,7 +16,6 @@
 
 #include "board.hpp"
 #include "helper.hpp"
-#include "maps_data.hpp"
 #include "params.hpp"
 #include "sonar.hpp"
 
@@ -119,7 +118,6 @@ struct Brain {
     int ownScenario = 0;
     std::vector<double> powBest, powSum, decayPow, heatDecay;
 
-    bool identified = false;
     int unitsNow = 1; // our team's dragon count this turn
 
     // Sonar: what we send this turn (per direction), BODY payloads we received, and the
@@ -197,67 +195,6 @@ struct Brain {
     }
 
     // -- knowledge -----------------------------------------------------------
-
-    // Walls and portals must match exactly. Pearl data may differ a little (the ladder has
-    // changed maps, e.g. the 10-dragon Dilemma): our copy is only a starting guess, and what we
-    // see overrides it (absorbView).
-    bool mapMatchesView(MapInfo const& m) const {
-        int spawnMismatch = 0;
-        for (auto const& tile : ct.get_tiles()) {
-            int const t = idxOf(tile.get_position());
-            for (int d = 0; d < 4; d++) {
-                bool horizontal;
-                int e;
-                edgeAt(t, d, horizontal, e);
-                int8_t const want = horizontal ? m.hKind[e] : m.vKind[e];
-                if (want != kindOf(tile.get_edge(Direction(DCH[d]))))
-                    return false;
-            }
-            bool const never = tile.get_pearl_time() < 0;
-            if (params::USE_SPAWN_DATA && never != (m.maxGap[t] == 0) && ++spawnMismatch > params::SPAWN_MISMATCH_OK)
-                return false;
-        }
-        return true;
-    }
-
-    void identifyMap() {
-        identified = true;
-        if (!params::USE_MAP_DATA)
-            return; // behave as on a map we have never seen: learn everything from view
-        int matches = 0;
-        for (int i = 0; i < maps_data::MAP_COUNT; i++) {
-            int w = 0, h = 0;
-            if (std::sscanf(maps_data::MAPS[i], "MAP %d %d", &w, &h) != 2 || w != W || h != H)
-                continue;
-            MapInfo m;
-            if (!parseMap(maps_data::MAPS[i], m) || !mapMatchesView(m))
-                continue;
-            if (matches++ == 0) {
-                K.loadMap(m, params::USE_SPAWN_DATA);
-                if (game.get_round_num() == 0)
-                    adoptSpawnBody(m);
-            }
-        }
-        ct.output_log("map", matches > 0 ? "known" : "unknown", matches);
-        // Logs are stripped from downloaded ladder replays, indicators are not: say what we saw.
-        if (game.get_round_num() == 0)
-            ct.set_indicator_string(std::string(matches > 0 ? "map known" : "map unknown") +
-                                    (params::USE_SPAWN_DATA ? "" : " (terrain)"));
-    }
-
-    void adoptSpawnBody(MapInfo const& m) {
-        int const head = idxOf(ct.get_position());
-        // Match on head and length only: the ladder often swaps which team starts where, so
-        // the team label in our copy of the map can be the other side's.
-        for (auto const& s : m.spawns) {
-            if (!s.body.empty() && s.body.front() == head && static_cast<int>(s.body.size()) == ct.get_length()) {
-                body.assign(s.body.begin(), s.body.end());
-                haveBody = true;
-                plannedPath.clear();
-                return;
-            }
-        }
-    }
 
     void learnEdge(int t, int d, Edge const& edge) {
         bool horizontal;
@@ -1021,6 +958,7 @@ struct Brain {
         newSearch();
         int qh = 0, qt = 0, room = 1;
         int near = 1; // tiles within 3 steps: room to dodge
+        int const maxDepth = std::max(params::EVAL_MAX_DEPTH, newLength + 8);
         // Our queen next round: tiles her free steps reach that no enemy can strike by then.
         bool const lookAhead = params::QUEEN_CORNERED > 0.0 && params::QUEEN_SAFE && amQueen() && !qMargin.empty();
         int const nextFree = (length + eaten + 3) / 4;
@@ -1048,6 +986,8 @@ struct Brain {
                     pocketFood += v;
                 }
             }
+            if (k >= maxDepth)
+                continue;
             for (int d = 0; d < 4; d++) {
                 int const n = nbr[t * 4 + d];
                 if (n < 0 || seen[n] == stamp || block[n] > k + 1)
@@ -1803,7 +1743,8 @@ struct Brain {
     // Swarm phase: split in half whenever long enough and both halves are safe.
     bool trySwarmSplit(int length, int units, Candidate const& best, bool bodyKnown) {
         if (round >= params::CONSOLIDATE_ROUND || length < params::SWARM_SPLIT_LEN || !bodyKnown ||
-            units >= game.get_unit_limit() || (best.eats && !params::SPLIT_WHILE_EATING))
+            units >= game.get_unit_limit() - (amQueen() ? 0 : params::QUEEN_SPARE_SLOTS) ||
+            (best.eats && !params::SPLIT_WHILE_EATING))
             return false;
         // The parent stands still for a turn, so not where an enemy head can reach it.
         if (threatLen[body.front()] < INF)
@@ -1875,8 +1816,6 @@ struct Brain {
     void decide() {
         round = game.get_round_num();
         absorbView();
-        if (!identified)
-            identifyMap();
         readSonar();
         inferSymmetry();
         updateBody();
@@ -1937,7 +1876,8 @@ struct Brain {
         int const freeSteps = (length + 3) / 4;
         if (params::MULTI_STEP && freeSteps >= 2 && static_cast<int>(body.size()) == length &&
             (!params::MULTI_QUEEN_ONLY || amQueen())) {
-            int const maxSteps = std::min(freeSteps, params::MULTI_MAX_STEPS);
+            int const maxSteps = std::min(freeSteps, N > params::MULTI_BIG_TILES ? params::MULTI_MAX_STEPS_BIG
+                                                                                  : params::MULTI_MAX_STEPS);
             std::vector<int> path;
             auto extend = [&](auto&& self) -> void {
                 if (path.size() >= 2) {
@@ -1986,7 +1926,9 @@ struct Brain {
         if (tryStrike(length, units))
             return;
 
-        bool const canSplit = ct.can_split(length / 2);
+        // The last dragon slot is our queen's: at the cap she could not split to save herself.
+        bool const slotFree = amQueen() || units < game.get_unit_limit() - params::QUEEN_SPARE_SLOTS;
+        bool const canSplit = ct.can_split(length / 2) && slotFree;
         int const head = body.front();
 
         // Trapped (or worse): compare moving on with every split, by length expected to survive.

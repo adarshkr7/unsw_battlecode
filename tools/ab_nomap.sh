@@ -8,8 +8,8 @@ S=tools
 for b in cand ref; do
   src=${!b}; dst=results/tmp_bots/nomap_${name}_$b
   rm -rf $dst; cp -r $src $dst
-  sed -i 's/^inline constexpr bool USE_MAP_DATA = true;/inline constexpr bool USE_MAP_DATA = false;/' $dst/params.hpp
-  grep -q "USE_MAP_DATA = false" $dst/params.hpp || { echo "no-map switch failed for $dst"; exit 1; }
+  sed -i "s/^inline constexpr bool USE_MAP_DATA = true;/inline constexpr bool USE_MAP_DATA = false;/" $dst/params.hpp
+  ! grep -q "USE_MAP_DATA = true" $dst/params.hpp || { echo "no-map switch failed for $dst"; exit 1; }
 done
 rm -rf results/v9/abn_$name
 python tools/tourney.py results/tmp_bots/nomap_${name}_cand results/tmp_bots/nomap_${name}_ref --maps-dir maps_worldgen --seeds 2 --seed-base 6000 --replays results/v9/abn_$name --keep-replays --json results/v9/abn_$name.json > results/v9/abn_$name.txt 2>&1

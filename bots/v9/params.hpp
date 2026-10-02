@@ -5,16 +5,9 @@ namespace params {
 
 // Log every decision (local debugging only: output costs points in the judge).
 inline constexpr bool DEBUG = false;
-// Use the built-in ladder maps (walls, portals, spawn rates, start bodies). Off = play as on an
-// unseen tournament map, learning only from what we see.
-inline constexpr bool USE_MAP_DATA = true;
-// Recognise a map by walls and portals; tolerate this many visible tiles whose pearl spawning
-// differs from our copy (the ladder changes maps). 0 = the old strict match.
-inline constexpr int SPAWN_MISMATCH_OK = 3;
-// Trust our copy's pearl spawns (tiles and gaps). Off: recognise the map by walls and portals
-// only and learn spawns from view, as on an unknown map. The ladder now plays "variants": the
-// same walls with different, unannounced pearl spawns.
-inline constexpr bool USE_SPAWN_DATA = false;
+// No map data: every map is learnt from what we see, as on the unseen tournament maps (v9
+// dropped the built-in copies of the old ladder maps on 2 Oct).
+
 // Round 0: if the start body is still unknown, assume the straight line behind the head.
 inline constexpr bool STRAIGHT_START = true; 
 
@@ -227,6 +220,9 @@ inline constexpr int QUEEN_FOOD_RADIUS = 3;
 // move. v4.46 counted one move later, so a split keeping a long queen looked fatal: on the new
 // Slithery Fight our coiled 25-long queen kept 2 and gave away 23.
 inline constexpr bool SPLIT_CHILD_EARLY = true;
+// Dragon slots kept free for our queen's emergency splits (only she may take them; 0 = off): on
+// Schooltime our team sat at the 64 cap and the trapped queen could not split.
+inline constexpr int QUEEN_SPARE_SLOTS = 0;
 // Budding: before QUEEN_BUD_UNTIL, a queen of QUEEN_BUD_LEN+ splits off a child of
 // QUEEN_BUD_CHILD (which then swarm-splits), keeping the rest. 0 = off.
 inline constexpr int QUEEN_BUD_LEN = 0;
@@ -294,6 +290,12 @@ inline constexpr bool OWN_BODY_OPEN = true;
 // MULTI_MAX_STEPS steps through tiles in view. A long queen outruns small hunters this way.
 inline constexpr bool MULTI_STEP = true;
 inline constexpr int MULTI_MAX_STEPS = 3;
+// CPU (100M points a turn): on maps of more than MULTI_BIG_TILES tiles paths stop at
+// MULTI_MAX_STEPS_BIG steps (3 steps on 64x64 maps peaked at 87-89M points), and every move's
+// search stops EVAL_MAX_DEPTH steps out (or the dragon's length plus 8, so it still finds its tail).
+inline constexpr int MULTI_BIG_TILES = 2048;
+inline constexpr int MULTI_MAX_STEPS_BIG = 2;
+inline constexpr int EVAL_MAX_DEPTH = 30;
 inline constexpr bool MULTI_QUEEN_ONLY = false;
 
 // --- Pearl-belief model ----------------------------------------------------------

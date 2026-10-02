@@ -1,0 +1,135 @@
+
+871543 2026-10-02T10:11 Schooltime vs Submarine.exe: LOSS at round 500 (we were A, 60x40)
+  our queen:   died r333 wall at len 4 (max 4)
+  their queen: alive, len 3 (max 4)
+  dragons/longest: r0 3/4 v 3/4  r100 46/3 v 4/18  r200 64/20 v 14/9  r300 64/16 v 17/14  r400 64/22 v 23/5  r499 26/43 v 15/11
+
+871581 2026-10-02T10:12 weakhold vs Tony S: LOSS at round 218 (we were A, 40x15)
+  our queen:   died r133 head-on at len 2 (max 4) — killer len 3 at 2,0 (in view) moved W; queen moved E
+  their queen: died r27 wall at len 3 (max 6)
+  dragons/longest: r0 2/4 v 2/4  r100 5/3 v 20/4  r200 1/2 v 26/5  r217 1/2 v 30/6
+
+871578 2026-10-02T10:12 Trophy vs Tony S: LOSS at round 500 (we were A, 25x25)
+  our queen:   died r188 head-on at len 13 (max 13) — killer len 3 at -1,-2 (in view) moved ES; queen moved N
+  their queen: died r98 head-on at len 2 (max 6) — killer len 2 at -1,0 (in view) moved ?; queen moved W
+  dragons/longest: r0 2/3 v 2/3  r100 12/8 v 34/4  r200 4/2 v 59/5  r300 2/3 v 62/11  r400 3/3 v 59/8  r499 1/17 v 24/38
+
+871644 2026-10-02T10:13 Queen Of Spades vs tozoman: LOSS at round 196 (we were A, 25x35)
+  our queen:   died r195 head-on at len 2 (max 4) — killer len 2 at 2,0 (in view) moved W; queen moved E
+  their queen: died r51 head-on at len 2 (max 4) — killer len 3 at 1,2 (in view) moved NW; queen moved S
+  dragons/longest: r0 2/3 v 2/3  r100 1/2 v 19/4  r195 1/2 v 28/4
+
+871648 2026-10-02T10:14 Slithery Fight vs tozoman: LOSS at round 500 (we were A, 63x27)
+  our queen:   died r4 self at len 2 (max 25)
+  their queen: died r71 other body at len 8 (max 25)
+  dragons/longest: r0 7/25 v 7/25  r100 61/5 v 56/4  r200 64/5 v 63/5  r300 63/4 v 61/10  r400 64/5 v 28/28  r499 19/22 v 3/72
+
+871948 2026-10-02T10:18 Slithery Fight vs STAR: LOSS at round 500 (we were B, 63x27)
+  our queen:   died r4 other body at len 2 (max 25)
+  their queen: alive, len 33 (max 33)
+  dragons/longest: r0 7/25 v 7/25  r100 50/6 v 41/7  r200 59/4 v 60/6  r300 58/5 v 64/7  r400 61/5 v 64/10  r499 16/21 v 49/33
+
+872387 2026-10-02T10:26 Tower Defense vs Deer Park: LOSS at round 266 (we were A, 32x16)
+  our queen:   died r265 head-on at len 5 (max 8) — killer len 2 at 0,-1 (in view) moved E; queen moved EN
+  their queen: died r201 wall at len 2 (max 4)
+  dragons/longest: r0 2/2 v 2/2  r100 4/2 v 3/3  r200 4/5 v 22/4  r265 1/5 v 35/4
+
+872388 2026-10-02T10:26 Trophy vs Deer Park: LOSS at round 135 (we were A, 25x25)
+  our queen:   died r75 head-on at len 3 (max 4)
+  their queen: died r31 head-on at len 2 (max 4) — killer len 3 at -2,-1 (in view) moved EE; queen moved N
+  dragons/longest: r0 2/3 v 2/3  r100 2/3 v 28/4  r134 1/2 v 51/4
+
+872392 2026-10-02T10:26 Autarky vs bread first search: LOSS at round 296 (we were A, 54x18)
+  our queen:   died r249 head-on at len 6 (max 6)
+  their queen: died r20 wall at len 2 (max 6)
+  dragons/longest: r0 6/14 v 6/14  r100 13/3 v 26/4  r200 11/5 v 53/5  r295 1/3 v 52/30
+
+872385 2026-10-02T10:26 Maze vs Deer Park: LOSS at round 500 (we were A, 48x24)
+  our queen:   died r146 wall at len 3 (max 4)
+  their queen: died r184 wall at len 2 (max 5)
+  dragons/longest: r0 2/4 v 2/4  r100 21/4 v 29/3  r200 27/4 v 56/4  r300 31/4 v 55/7  r400 34/4 v 50/7  r499 11/34 v 5/57
+
+872393 2026-10-02T10:27 Slithery Fight vs bread first search: LOSS at round 500 (we were A, 63x27)
+  our queen:   died r4 other body at len 2 (max 25)
+  their queen: died r3 other body at len 3 (max 25)
+  dragons/longest: r0 7/25 v 7/25  r100 51/5 v 60/4  r200 62/4 v 59/18  r300 63/5 v 59/18  r400 62/5 v 26/20  r499 25/18 v 7/21
+
+872384 2026-10-02T10:27 Slithery Fight vs Deer Park: LOSS at round 500 (we were A, 63x27)
+  our queen:   died r4 self at len 2 (max 25)
+  their queen: died r42 wall at len 2 (max 25)
+  dragons/longest: r0 7/25 v 7/25  r100 51/6 v 55/6  r200 64/7 v 59/8  r300 64/8 v 61/8  r400 64/6 v 49/11  r499 20/36 v 5/56
+
+872386 2026-10-02T10:27 Australia vs Deer Park: LOSS at round 500 (we were A, 64x64)
+  our queen:   died r413 head-on at len 25 (max 25) — killer len 8 at 1,-1 (in view) moved W; queen moved N
+  their queen: died r70 head-on at len 2 (max 4) — killer len 2 at 0,1 (in view) moved ?; queen moved S
+  dragons/longest: r0 9/4 v 9/4  r100 32/7 v 12/3  r200 64/22 v 25/4  r300 64/18 v 57/7  r400 64/19 v 49/9  r499 29/33 v 7/52
+
+872693 2026-10-02T10:33 weakhold vs Team SKKU: LOSS at round 247 (we were A, 40x15)
+  our queen:   died r246 head-on at len 3 (max 4) — killer len 3 at 1,3 (in view) moved NWN; queen moved S
+  their queen: alive, len 2 (max 4)
+  dragons/longest: r0 2/4 v 2/4  r100 4/5 v 11/4  r200 3/5 v 24/3  r246 1/3 v 29/12
+
+872692 2026-10-02T10:33 Devil vs Team SKKU: LOSS at round 280 (we were A, 32x16)
+  our queen:   died r279 head-on at len 3 (max 4) — killer len 3 at 2,1 (in view) moved WW; queen moved S
+  their queen: alive, len 2 (max 4)
+  dragons/longest: r0 3/4 v 3/4  r100 9/3 v 31/3  r200 1/3 v 62/4  r279 1/3 v 57/11
+
+872694 2026-10-02T10:33 Queen Of Spades vs Team SKKU: LOSS at round 425 (we were A, 25x35)
+  our queen:   died r393 head-on at len 7 (max 7) — killer len 4 at -1,2 (in view) moved NWN; queen moved WW
+  their queen: died r350 head-on at len 2 (max 5) — killer len 3 at -2,-1 (in view) moved EE; queen moved N
+  dragons/longest: r0 2/3 v 2/3  r100 8/4 v 10/3  r200 9/7 v 15/3  r300 13/7 v 19/4  r400 1/3 v 26/5  r424 1/3 v 25/13
+
+872691 2026-10-02T10:33 Maze vs Team SKKU: LOSS at round 500 (we were A, 48x24)
+  our queen:   died r158 self at len 2 (max 4)
+  their queen: alive, len 2 (max 5)
+  dragons/longest: r0 2/4 v 2/4  r100 27/4 v 33/4  r200 40/5 v 54/4  r300 36/4 v 57/7  r400 41/5 v 36/22  r499 5/27 v 5/69
+
+872769 2026-10-02T10:34 Trophy vs pizza: LOSS at round 106 (we were A, 25x25)
+  our queen:   died r105 head-on at len 4 (max 4) — killer len 3 at 2,-1 (in view) moved WW; queen moved N
+  their queen: died r62 head-on at len 2 (max 4) — killer len 2 at 1,0 (in view) moved ?; queen moved E
+  dragons/longest: r0 2/3 v 2/3  r100 1/4 v 62/4  r105 1/4 v 63/5
+
+872764 2026-10-02T10:34 Devil vs Nitronics: LOSS at round 248 (we were A, 32x16)
+  our queen:   died r189 head-on at len 3 (max 4) — killer len 3 at -1,-2 (in view) moved SS; queen moved W
+  their queen: died r28 self at len 4 (max 4)
+  dragons/longest: r0 3/4 v 3/4  r100 9/3 v 20/4  r200 5/2 v 36/4  r247 1/3 v 55/4
+
+872760 2026-10-02T10:34 weakhold vs Just Keep Swimming: LOSS at round 413 (we were A, 40x15)
+  our queen:   died r412 head-on at len 5 (max 5) — killer len 4 at -2,1 (in view) moved EE; queen moved S
+  their queen: died r44 wall at len 3 (max 5)
+  dragons/longest: r0 2/4 v 2/4  r100 4/3 v 4/2  r200 3/3 v 21/4  r300 1/2 v 26/5  r400 1/5 v 27/8  r412 1/5 v 26/8
+
+872773 2026-10-02T10:34 Trophy vs byte_force: LOSS at round 219 (we were A, 25x25)
+  our queen:   died r89 head-on at len 3 (max 3) — killer len 2 at 1,-1 (in view) moved W; queen moved N
+  their queen: alive, len 3 (max 6)
+  dragons/longest: r0 2/3 v 2/3  r100 19/3 v 31/5  r200 11/3 v 47/4  r218 1/3 v 44/4
+
+872762 2026-10-02T10:34 Autarky vs Nitronics: LOSS at round 470 (we were A, 54x18)
+  our queen:   died r166 head-on at len 4 (max 4) — killer len 2 at -5,-5 (unseen) moved N; queen moved S
+  their queen: died r36 head-on at len 3 (max 3) — killer len 4 at -4,0 (unseen) moved EEE; queen moved W
+  dragons/longest: r0 6/14 v 6/14  r100 23/3 v 18/4  r200 24/3 v 33/4  r300 20/3 v 39/4  r400 14/3 v 28/27  r469 1/17 v 25/49
+
+872771 2026-10-02T10:34 Maze vs pizza: LOSS at round 500 (we were A, 48x24)
+  our queen:   died r301 wall at len 2 (max 6)
+  their queen: died r34 no valid action at len 3 (max 4)
+  dragons/longest: r0 2/4 v 2/4  r100 22/4 v 26/4  r200 50/5 v 50/3  r300 58/5 v 45/4  r400 58/7 v 48/4  r499 25/17 v 5/38
+
+872695 2026-10-02T10:34 Around UNSW vs Team SKKU: LOSS at round 500 (we were A, 64x64)
+  our queen:   died r387 head-on at len 8 (max 8) — killer len 3 at -2,27 (unseen) moved W; queen moved W
+  their queen: died r445 head-on at len 2 (max 4) — killer len 5 at -4,1 (unseen) moved NEEE; queen moved W
+  dragons/longest: r0 10/10 v 10/10  r100 35/4 v 64/10  r200 64/8 v 64/12  r300 64/14 v 61/25  r400 64/18 v 64/37  r499 16/29 v 21/44
+
+872772 2026-10-02T10:35 Islands vs byte_force: LOSS at round 500 (we were A, 56x40)
+  our queen:   died r101 other body at len 2 (max 4)
+  their queen: died r83 head-on at len 3 (max 4) — killer len 3 at -1,2 (in view) moved NN; queen moved W
+  dragons/longest: r0 5/3 v 5/3  r100 57/4 v 45/3  r200 64/6 v 59/4  r300 57/3 v 64/4  r400 64/6 v 29/15  r499 17/34 v 1/60
+
+872768 2026-10-02T10:35 Slithery Fight vs pizza: LOSS at round 500 (we were A, 63x27)
+  our queen:   died r4 self at len 2 (max 25)
+  their queen: died r1 no valid action at len 2 (max 25)
+  dragons/longest: r0 7/25 v 7/25  r100 63/6 v 45/6  r200 63/4 v 64/5  r300 61/5 v 59/7  r400 64/9 v 10/33  r499 26/28 v 4/45
+
+872774 2026-10-02T10:36 Around UNSW vs byte_force: LOSS at round 500 (we were A, 64x64)
+  our queen:   died r263 head-on at len 6 (max 6) — killer len 6 at 3,4 (unseen) moved NNWWW; queen moved SS
+  their queen: died r309 head-on at len 3 (max 4) — killer len 3 at -2,0 (in view) moved E; queen moved W
+  dragons/longest: r0 10/10 v 10/10  r100 54/4 v 63/4  r200 64/7 v 64/8  r300 64/10 v 64/12  r400 64/6 v 42/14  r499 37/35 v 8/47

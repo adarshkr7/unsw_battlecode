@@ -120,8 +120,14 @@ def main():
         g["opp"] = g["b" if g["side"] == "a" else "a"]["name"]
         g["result"] = ("win" if g["winner"] == g["side"] else "draw" if g["winner"] == "draw"
                        else "loss" if g["winner"] else g["status"])
-    (out / "games.json").write_text(json.dumps(games, indent=1, ensure_ascii=False), encoding="utf-8")
-    print(f"{len(games)} games since {args.since} -> {out / 'games.json'}")
+    # Merge with what earlier runs saved, so a later --since does not drop older games; the
+    # fresh copy of a game wins (a pending game may have finished since).
+    path = out / "games.json"
+    merged = {g["id"]: g for g in json.loads(path.read_text(encoding="utf-8"))} if path.exists() else {}
+    merged.update({g["id"]: g for g in games})
+    path.write_text(json.dumps(sorted(merged.values(), key=lambda g: g["at"], reverse=True), indent=1,
+                               ensure_ascii=False), encoding="utf-8")
+    print(f"{len(games)} games since {args.since} -> {path} ({len(merged)} kept)")
 
     if args.replays:
         todo = [g["id"] for g in games if g["hasReplay"] and not (out / f"{g['id']}.replay").exists()]

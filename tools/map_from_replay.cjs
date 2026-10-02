@@ -42,8 +42,9 @@ for (const file of files) {
 
 const mirror = (t, W, H, sym) => {
     const x = t % W, y = Math.floor(t / W);
-    if (sym === 'x') return y * W + (W - 1 - x);
-    if (sym === 'y') return (H - 1 - y) * W + x;
+    // The map format names the axis that stays: SYMMETRY y keeps y and flips x.
+    if (sym === 'y') return y * W + (W - 1 - x);
+    if (sym === 'x') return (H - 1 - y) * W + x;
     if (sym === 'xy') return (H - 1 - y) * W + (W - 1 - x);
     return t;
 };
