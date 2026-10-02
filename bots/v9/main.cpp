@@ -95,6 +95,8 @@ struct Brain {
     std::vector<Sighting> sightings;
     std::vector<int> preyDist; // steps to the nearest enemy head worth trading with
     std::vector<int> queenDist; // hunters: steps to where the enemy queen was last seen
+    int allyQueenTile = -1;     // our queen's head, when we (not she) can see it
+    std::vector<int> allyQueenDist;
     bool queenHunt = false;
     std::vector<int> unseenDist; // our queen: steps from the nearest tile out of view (bodies block)
     std::vector<double> qThreat; // our queen: chance an enemy head can reach the tile this round
@@ -175,6 +177,7 @@ struct Brain {
         kingDist.assign(N, INF);
         preyDist.assign(N, INF);
         queenDist.assign(N, INF);
+        allyQueenDist.assign(N, INF);
         othersDist.assign(N, INF);
         ownStamp.assign(N, 0);
         owned.assign(N, 0);
@@ -938,7 +941,7 @@ struct Brain {
                 post.push_front(n);
                 if (eat) {
                     eaten++;
-                    score += kingsFood(n) ? -params::KING_FOOD_PENALTY : params::EAT_NOW;
+                    score += kingsFood(n) || queenFood(n) ? -params::KING_FOOD_PENALTY : params::EAT_NOW;
                 } else {
                     post.pop_back();
                 }
@@ -970,7 +973,7 @@ struct Brain {
             bool const eat = inView[dest] && pearlNow[dest];
             if (eat) {
                 eaten = 1;
-                score += kingsFood(dest) ? -params::KING_FOOD_PENALTY : params::EAT_NOW;
+                score += kingsFood(dest) || queenFood(dest) ? -params::KING_FOOD_PENALTY : params::EAT_NOW;
             }
             // (The part of our body we know: all of it, or the front of an unknown one.)
             int const keep = std::min<int>(static_cast<int>(body.size()), length + eaten - 1);
@@ -1031,13 +1034,14 @@ struct Brain {
             int const t = queue[qh++];
             int const k = dist[t];
             if (t != dest && !(inView[t] && occId[t] >= 0)) {
-                double v = kingsFood(t) ? 0.0 : pearlBelief(t, round + 1 + k);
+                double v = kingsFood(t) || queenFood(t) ? 0.0 : pearlBelief(t, round + 1 + k);
                 if (v > 0.0) {
                     int const moves = 1 + k;
                     if (distE[t] < moves)
                         v *= params::ENEMY_CLOSER;
                     // The king takes what is dropped for it, however many feeders are nearer.
-                    if (!amKing() && (distA[t] < moves || (distA[t] == moves && ownerA[t] < myId)))
+                    if (!amKing() && !(params::QUEEN_FOOD_RADIUS >= 0 && amQueen()) &&
+                        (distA[t] < moves || (distA[t] == moves && ownerA[t] < myId)))
                         v *= params::ALLY_CLOSER;
                     best = std::max(best, v * powBest[k]);
                     sum += v * powSum[k];
@@ -1205,6 +1209,8 @@ struct Brain {
     }
     // A pearl next to the king we feed is its food: leave it for it rather than eat it and
     // pass on only half when we feed in turn.
+    // Pearls near our queen (in view) are hers, all game: her length is our score.
+    bool queenFood(int t) const { return allyQueenTile >= 0 && allyQueenDist[t] <= params::QUEEN_FOOD_RADIUS; }
     bool kingsFood(int t) const {
         return kingVisible && (round >= params::FEED_ROUND || earlyKingPhase()) &&
                kingDist[t] <= params::KING_FOOD_RADIUS;
@@ -1321,8 +1327,9 @@ struct Brain {
             raiseBlock(body[i], (parentLen - 1 - i) + 2);
             ownStamp[body[i]] = ownScenario;
         }
+        // The child moves later this round, so its tail is gone before our next move.
         for (int i = parentLen; i < length; i++)
-            raiseBlock(body[i], (i - parentLen) + 2);
+            raiseBlock(body[i], (i - parentLen) + (params::SPLIT_CHILD_EARLY ? 1 : 2));
         raiseBlock(body[0], INF);
         bool const parentSafe = floodSafe(body[0], parentLen);
         restoreBlock();
@@ -1806,7 +1813,7 @@ struct Brain {
             return false;
         if (iAmEarlyKing())
             return false;
-        if (amQueen() && round >= params::QUEEN_SPLIT_UNTIL) {
+        if (amQueen() && (round >= params::QUEEN_SPLIT_UNTIL || length > params::QUEEN_SPLIT_MAX_LEN)) {
             // Budding: a long queen seeds the swarm with a small child and keeps growing.
             int const child = params::QUEEN_BUD_CHILD;
             if (params::QUEEN_BUD_LEN <= 0 || round >= params::QUEEN_BUD_UNTIL || length < params::QUEEN_BUD_LEN ||
@@ -1899,6 +1906,14 @@ struct Brain {
         computeThreats();
         if (params::QUEEN_SAFE && amQueen())
             computeUnseen();
+        allyQueenTile = -1;
+        if (params::QUEEN_FOOD_RADIUS >= 0 && !amQueen()) {
+            for (auto const& a : allyHeads)
+                if (isQueenId(a.id))
+                    allyQueenTile = a.tile;
+            if (allyQueenTile >= 0)
+                bfsFrom({{-1, allyQueenTile, 0}}, allyQueenDist, nullptr);
+        }
         updateKing(length);
         adaptToGame(units);
         chooseKing(length, units);

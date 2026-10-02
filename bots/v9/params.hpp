@@ -217,6 +217,16 @@ inline constexpr bool QUEEN_KING = true;
 // The queen swarm-splits like the others only before this round (0: never). 60 beat 0 by 28-14
 // head to head (2 Oct): twice the swarm early, and she is still short when it gets dangerous.
 inline constexpr int QUEEN_SPLIT_UNTIL = 60;
+// ... and only while she is this short: a queen that starts long (25 on the new Slithery Fight)
+// keeps her length.
+inline constexpr int QUEEN_SPLIT_MAX_LEN = 8;
+// Queen first at food: the others leave pearls within this many steps of our queen when they
+// see her (all game), and she ignores which ally would reach a pearl first. -1 = off.
+inline constexpr int QUEEN_FOOD_RADIUS = 3;
+// After a split the child moves later in the round, so its tail frees before the parent's next
+// move. v4.46 counted one move later, so a split keeping a long queen looked fatal: on the new
+// Slithery Fight our coiled 25-long queen kept 2 and gave away 23.
+inline constexpr bool SPLIT_CHILD_EARLY = true;
 // Budding: before QUEEN_BUD_UNTIL, a queen of QUEEN_BUD_LEN+ splits off a child of
 // QUEEN_BUD_CHILD (which then swarm-splits), keeping the rest. 0 = off.
 inline constexpr int QUEEN_BUD_LEN = 0;

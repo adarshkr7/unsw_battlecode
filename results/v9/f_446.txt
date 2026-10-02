@@ -1,0 +1,25 @@
+building bots/v9 and bots/v4.46 (judge sandbox)...
+40 games on 10 maps with 16 workers
+
+map                  W   D   L   score
+schooltime           3   0   1     75%
+portals              1   0   3     25%
+slithery_fight       4   0   0    100%
+queen_of_spades      0   0   4      0%
+default              0   0   4      0%
+trophy               0   0   4      0%
+dilemma              2   0   2     50%
+autarky              1   0   3     25%
+devil                1   0   3     25%
+trauma               2   0   2     50%
+TOTAL               14   0  26     35%   (bots/v9 vs bots/v4.46, 145s)
+bot1 results by how games ended: L elim 17, L length 9, W elim 3, W length 11
+longest dragon at the end bots/v9: mean 12.1
+longest dragon at the end bots/v4.46: mean 11.2
+final total length bots/v9: mean 42.9   surviving dragons: mean 6.9
+final total length bots/v4.46: mean 81.6   surviving dragons: mean 22.4
+deaths bots/v9: hit a wall 4343, lost a head-to-head 3562, hit itself 2788, hit another dragon 2026, no valid action 399
+max points/turn bots/v9: 50.6M
+deaths bots/v4.46: hit a wall 4592, lost a head-to-head 3804, hit itself 2726, hit another dragon 2033, no valid action 401
+max points/turn bots/v4.46: 19.2M
+replays kept in D:\CODE\unsw_battlecode\results\v9\f_446\_tmp (python tools/replay_summary.py D:\CODE\unsw_battlecode\results\v9\f_446\_tmp BOT1 BOT2)

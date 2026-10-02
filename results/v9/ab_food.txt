@@ -1,0 +1,30 @@
+building results/tmp_bots/v9_food and results/tmp_bots/v9_ref (judge sandbox)...
+48 games on 12 maps with 16 workers
+
+map                  W   D   L   score
+around_unsw          3   0   1     75%
+autarky              1   0   3     25%
+islands              0   0   0      0%  (4 failed)
+maze                 1   0   3     25%
+portals              2   0   2     50%
+queen_of_spades      2   0   2     50%
+schooltime           0   0   0      0%  (4 failed)
+slithery_fight       1   0   3     25%
+stripes              4   0   0    100%
+trauma               3   0   1     75%
+trophy               0   0   0      0%  (4 failed)
+weakhold             3   0   1     75%
+TOTAL               20   0  16     56%   (results/tmp_bots/v9_food vs results/tmp_bots/v9_ref, 166s)
+bot1 results by how games ended: L elim 3, L length 13, W elim 9, W length 11
+longest dragon at the end results/tmp_bots/v9_food: mean 16.2
+longest dragon at the end results/tmp_bots/v9_ref: mean 16.5
+final total length results/tmp_bots/v9_food: mean 68.1   surviving dragons: mean 14.2
+final total length results/tmp_bots/v9_ref: mean 51.7   surviving dragons: mean 9.2
+deaths results/tmp_bots/v9_food: hit a wall 2696, lost a head-to-head 2395, hit itself 1377, hit another dragon 952, no valid action 868
+max points/turn results/tmp_bots/v9_food: 87.2M  <-- close to the 100M limit
+deaths results/tmp_bots/v9_ref: hit a wall 2664, lost a head-to-head 2385, hit itself 1452, hit another dragon 961, no valid action 872
+max points/turn results/tmp_bots/v9_ref: 89.1M  <-- close to the 100M limit
+errors (engine) x12: loaded wasm vs wasm in the judge's sandbox
+seed #x#
+error: D:\CODE\unsw_battlecode\maps_la
+replays kept in D:\CODE\unsw_battlecode\results\v9\ab_food\_tmp (python tools/replay_summary.py D:\CODE\unsw_battlecode\results\v9\ab_food\_tmp BOT1 BOT2)

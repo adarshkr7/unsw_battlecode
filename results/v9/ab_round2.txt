@@ -1,0 +1,35 @@
+== s30: TOTAL               19   0  23     45%   (results/tmp_bots/v9_s30 vs results/tmp_bots/v9_ref, 151s)
+bot1 results by how games ended: L elim 11, L length 12, W elim 8, W length 11
+final total length results/tmp_bots/v9_s30: mean 52.1   surviving dragons: mean 11.0
+final total length results/tmp_bots/v9_ref: mean 67.9   surviving dragons: mean 16.4
+max points/turn results/tmp_bots/v9_s30: 56.8M
+max points/turn results/tmp_bots/v9_ref: 52.1M
+42 games: our queen alive at end 8, died before r10 0, mean final/death length 10.9, mean max 12.9; their queen alive 11
+== s120: TOTAL               23   0  19     55%   (results/tmp_bots/v9_s120 vs results/tmp_bots/v9_ref, 128s)
+bot1 results by how games ended: L elim 10, L length 9, W elim 12, W length 11
+final total length results/tmp_bots/v9_s120: mean 65.4   surviving dragons: mean 17.1
+final total length results/tmp_bots/v9_ref: mean 56.3   surviving dragons: mean 14.6
+max points/turn results/tmp_bots/v9_s120: 56.6M
+max points/turn results/tmp_bots/v9_ref: 49.1M
+42 games: our queen alive at end 7, died before r10 0, mean final/death length 8.8, mean max 10.2; their queen alive 13
+== bud8b: TOTAL               21   0  21     50%   (results/tmp_bots/v9_bud8b vs results/tmp_bots/v9_ref, 144s)
+bot1 results by how games ended: L elim 9, L length 12, W elim 11, W length 10
+final total length results/tmp_bots/v9_bud8b: mean 64.9   surviving dragons: mean 16.3
+final total length results/tmp_bots/v9_ref: mean 60.3   surviving dragons: mean 14.3
+max points/turn results/tmp_bots/v9_bud8b: 55.7M
+max points/turn results/tmp_bots/v9_ref: 49.1M
+42 games: our queen alive at end 7, died before r10 0, mean final/death length 8.9, mean max 10.5; their queen alive 12
+== guard: TOTAL               21   0  21     50%   (results/tmp_bots/v9_guard vs results/tmp_bots/v9_ref, 129s)
+bot1 results by how games ended: L elim 11, L length 10, W elim 12, W length 9
+final total length results/tmp_bots/v9_guard: mean 61.3   surviving dragons: mean 15.4
+final total length results/tmp_bots/v9_ref: mean 59.6   surviving dragons: mean 16.3
+max points/turn results/tmp_bots/v9_guard: 52.1M
+max points/turn results/tmp_bots/v9_ref: 52.8M
+42 games: our queen alive at end 6, died before r10 0, mean final/death length 8.8, mean max 10.3; their queen alive 13
+== huntap: TOTAL               23   0  19     55%   (results/tmp_bots/v9_huntap vs results/tmp_bots/v9_ref, 139s)
+bot1 results by how games ended: L elim 7, L length 12, W elim 13, W length 10
+final total length results/tmp_bots/v9_huntap: mean 77.8   surviving dragons: mean 20.9
+final total length results/tmp_bots/v9_ref: mean 50.6   surviving dragons: mean 11.1
+max points/turn results/tmp_bots/v9_huntap: 42.2M
+max points/turn results/tmp_bots/v9_ref: 48.9M
+42 games: our queen alive at end 7, died before r10 0, mean final/death length 11.2, mean max 12.6; their queen alive 9

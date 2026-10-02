@@ -1,0 +1,31 @@
+== fix3: TOTAL               22   0  20     52%   (results/tmp_bots/v9_fix3 vs results/tmp_bots/v9_ref, 174s)
+bot1 results by how games ended: L elim 11, L length 9, W elim 11, W length 11
+final total length results/tmp_bots/v9_fix3: mean 61.4   surviving dragons: mean 16.8
+final total length results/tmp_bots/v9_ref: mean 64.5   surviving dragons: mean 16.8
+max points/turn results/tmp_bots/v9_fix3: 50.0M
+max points/turn results/tmp_bots/v9_ref: 49.3M
+node:fs:561
+  return binding.open(
+                 ^
+
+Error: ENOENT: no such file or directory, open 'D:\CODE\unsw_battlecode\results\v9\ab_fix3\_tmp\schooltime-s5000-bot2A.replay'
+    at Object.openSync (node:fs:561:18)
+    at Object.readFileSync (node:fs:445:35)
+    at Object.decode (D:\CODE\unsw_battlecode\tools\replaylib.cjs:19:57)
+    at Object.<anonymous> (D:\CODE\unsw_battlecode\tools\queen_stats.cjs:11:19)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module._load (node:internal/modules/cjs/loader:1355:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5) {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\CODE\\unsw_battlecode\\results\\v9\\ab_fix3\\_tmp\\schooltime-s5000-bot2A.replay'
+}
+
+Node.js v24.15.0
+schooltime-s5000-bot1A.replay        ours died r175 H len 7 (max 11) | theirs died r114 O | rounds 500
+== fix3: 
+0 games: our queen alive at end 0, died before r10 0, mean final/death length NaN, mean max NaN; their queen alive 0

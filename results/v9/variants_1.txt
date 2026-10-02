@@ -1,0 +1,15 @@
+== bud8: TOTAL               23   0  17     57%   (results/tmp_bots/v9_bud8 vs bots/v4.46, 195s)
+bot1 results by how games ended: L elim 12, L length 5, W elim 5, W length 18
+final total length results/tmp_bots/v9_bud8: mean 56.7   surviving dragons: mean 10.2
+final total length bots/v4.46: mean 70.8   surviving dragons: mean 20.4
+40 games: our queen alive at end 5, died before r10 12, mean final/death length 7.8, mean max 12.5; their queen alive 0
+== bud10: TOTAL               19   0  21     48%   (results/tmp_bots/v9_bud10 vs bots/v4.46, 144s)
+bot1 results by how games ended: L elim 15, L length 6, W elim 4, W length 15
+final total length results/tmp_bots/v9_bud10: mean 45.0   surviving dragons: mean 7.8
+final total length bots/v4.46: mean 78.8   surviving dragons: mean 23.4
+40 games: our queen alive at end 3, died before r10 12, mean final/death length 7.3, mean max 11.8; their queen alive 1
+== s60: TOTAL               20   0  20     50%   (results/tmp_bots/v9_s60 vs bots/v4.46, 141s)
+bot1 results by how games ended: L elim 14, L length 6, W elim 6, W length 14
+final total length results/tmp_bots/v9_s60: mean 47.8   surviving dragons: mean 9.8
+final total length bots/v4.46: mean 82.7   surviving dragons: mean 23.8
+40 games: our queen alive at end 4, died before r10 12, mean final/death length 8.3, mean max 11.7; their queen alive 0
