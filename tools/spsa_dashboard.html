@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuning progress</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;
+    --series-1-wash: rgba(42, 120, 214, 0.10);
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-1-wash: rgba(57, 135, 229, 0.14);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-1-wash: rgba(57, 135, 229, 0.14);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); margin: 4px 0 0; }
+  .muted { color: var(--text-muted); }
+  .note { color: var(--text-secondary); max-width: 760px; margin: 12px 0 0; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+  }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 16px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .kpi .label { color: var(--text-secondary); font-size: 13px; }
+  .kpi .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+  .kpi .detail { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; }
+  .status svg { flex: none; }
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 12px; }
+  .pcard { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 6px; position: relative; }
+  .pcard .pname { font-size: 12px; color: var(--text-secondary); font-weight: 600; letter-spacing: 0.01em; word-break: break-all; }
+  .pcard .pdesc { font-size: 12px; color: var(--text-muted); min-height: 2.9em; }
+  .pcard .pval { font-size: 18px; font-weight: 600; margin-top: 2px; }
+  .pcard .pchange { font-size: 12px; color: var(--text-secondary); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { color: var(--text-secondary); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  details summary { cursor: pointer; color: var(--text-secondary); margin-top: 8px; }
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); font-size: 12px; max-width: 260px;
+  }
+  .tooltip .tv { font-size: 15px; font-weight: 600; }
+  .tooltip .tl { color: var(--text-secondary); }
+  .tooltip .key { display: inline-block; width: 12px; height: 2px; background: var(--series-1); vertical-align: middle; margin-right: 6px; }
+  .err { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; }
+  tr.total td { font-weight: 600; }
+  tr.first td { border-top: 2px solid var(--grid); }
+  .progress { padding: 4px 0 8px; }
+  .progress .ptext { color: var(--text-secondary); }
+  .progress .ptext b { color: var(--text-primary); font-weight: 600; }
+  .bar { height: 8px; border-radius: 4px; background: var(--grid); overflow: hidden; margin: 8px 0 4px; max-width: 640px; }
+  .bar .fill { height: 100%; border-radius: 4px; background: var(--series-1); transition: width 0.4s ease; }
+  .live { color: var(--text-muted); font-weight: 400; }
+  .stale main { opacity: 0.6; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Tuning progress</h1>
+      <p class="sub">v19 with two-pearl sprints and early queen feeding: 25 settings, tuned on the 17 ladder maps (exact copies from the game's API, from step 6) in the judge sandbox</p>
+    </div>
+    <div class="muted" id="updated">Loading…</div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Summary"></section>
+
+  <section class="card">
+    <h2>Tests against our bots</h2>
+    <p class="note">At set steps the tuner pauses and the averaged values (the big numbers further down) play v19 as submitted (or the bot named next to the step, such as v21), on new seeds and both sides: on the 17 tuning maps, and on 5 official maps never used for tuning. Score = (wins + half the draws) ÷ games, so 50% is even. The range is where the true score probably lies (95%): a range wholly above 50% means the tuned bot is better.</p>
+    <div class="scroll"><table id="checkTable"></table></div>
+    <details id="checkMapsBox" hidden>
+      <summary>Results by map</summary>
+      <div class="scroll"><table id="checkMaps"></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Step results</h2>
+    <p class="note">Each step plays a + copy of the bot against a − copy (every parameter nudged one way in one, the other way in the other) on every ladder map (both sides), then moves each parameter toward the copy that won. A bar shows how far the + copy won (up) or lost (down) that step: wins minus losses, divided by games. One step is mostly luck; the tuner learns from many of them.</p>
+    <div class="chart" id="steps"></div>
+    <details>
+      <summary>Step results as a table</summary>
+      <div class="scroll"><table id="stepTable"></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Where each parameter is heading</h2>
+    <p class="note">The blue line is the parameter's value after each step; the thin grey line is where it started. A steady drift one way means the games keep preferring that direction. The big number is the average over the second half of the steps so far: the value we would test against v19. For the two added features, "off" is inside the range: a sprint cost near 800 means no sprints, 0% feeders means no early queen feeding.</p>
+    <div class="grid" id="params"></div>
+  </section>
+
+  <section class="card">
+    <h2>Values</h2>
+    <div class="scroll"><table id="paramTable"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Last finished step, by map</h2>
+    <p class="note">How the + copy did on each map, playing as team A and as team B (W won, L lost, D draw).</p>
+    <div class="scroll"><table id="mapTable"></table></div>
+  </section>
+
+  <section class="card" id="errCard" hidden>
+    <h2>Tuner messages</h2>
+    <div class="err" id="errTail"></div>
+  </section>
+</main>
+<div class="tooltip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const DESC = {
+  THREAT_PER_LEN: "Cost of standing where a longer enemy can strike, per segment",
+  THREAT_EVEN: "Cost of standing where an equal enemy can strike",
+  THREAT_DENSITY_PENALTY: "Cost of an even strike threat where enemies outnumber us",
+  TRADE_MIN_UNITS: "Dragons we need before taking even head trades",
+  HUNT_ATTRACT: "Pull toward enemy heads worth trading with",
+  AGGRO_RATIO: "How far we must outnumber them to play aggressive",
+  EAT_NOW: "Value of eating a pearl this turn",
+  FOOD_BEST: "Value of the best pearl in reach",
+  GAMMA_BEST: "How much a pearl keeps per step away (discount)",
+  ALLY_CLOSER: "Value kept for a pearl an ally reaches first",
+  ENEMY_CLOSER: "Value kept for a pearl an enemy reaches first",
+  REVISIT: "Cost of going back where we have just been",
+  DIVE_SEG_COST: "Cost per segment of a dragon dying in a dead end",
+  QUEEN_KEEPAWAY: "How hard the queen keeps away from enemy heads",
+  QUEEN_LONGER_P: "Chance an enemy with an unseen tail is longer",
+  QUEEN_SPLIT_UNTIL: "Last round the queen splits like the swarm",
+  FEED_ROUND: "Round feeding the king starts (and the pull to it)",
+  CONSOLIDATE_ROUND: "Round swarm splitting stops",
+  FEED_MARGIN: "How much longer an ally must be before we feed it",
+  KING_APPROACH: "Pull toward the king per step, once feeding starts",
+  EAT_SPRINT_COST: "Two-pearl sprints: cost of the segment paid (800 = never)",
+  EAT_SPRINT_ENEMY_DIST: "Two-pearl sprints: only when an enemy head is this near",
+  QFEED_ROUND: "Early queen feeding: round it starts",
+  QFEED_PULL_PCT: "Early queen feeding: share of small dragons that feed her (0 = off)",
+  QFEED_MIN_UNITS: "Early queen feeding: dragons we need before feeding",
+};
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const tip = $("tip");
+let DATA = null;
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined && text !== null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+function fmt(v, isInt) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  if (isInt) return String(Math.round(v));
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  return v.toFixed(3);
+}
+function signed(v, digits) { return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(digits); }
+function clock(epoch) { return new Date(epoch * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+function when(epoch) {
+  const d = new Date(epoch * 1000), today = new Date();
+  const t = clock(epoch);
+  if (d.toDateString() === today.toDateString()) return `today ${t}`;
+  return `${d.toLocaleDateString([], { weekday: "short" })} ${t}`;
+}
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function showTip(evt, valueText, lines) {
+  tip.replaceChildren();
+  const v = h("div", null, "tv");
+  const key = h("span", null, "key");
+  v.appendChild(key);
+  v.appendChild(document.createTextNode(valueText));
+  tip.appendChild(v);
+  for (const l of lines) tip.appendChild(h("div", l, "tl"));
+  tip.style.display = "block";
+  const pad = 14, w = tip.offsetWidth, hgt = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > window.innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + hgt > window.innerHeight - 8) y = evt.clientY - hgt - pad;
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function testPct(d) {
+  const a = d.testLive && d.testLive.all;
+  return a && a.total ? Math.floor(100 * a.done / a.total) : null;
+}
+function statusOf(d) {
+  const p = testPct(d);
+  const done = p !== null ? `${p}% done` : d.testing ? d.testing.phase : "";
+  if (d.testing && d.running) {  // an extra test run by hand while the tuner keeps going
+    const mins = (d.now - d.testing.started) / 60;
+    return { label: `Running step ${d.running.step + 1}`, detail: `and testing step ${d.testing.step} values against v19: ${done}, ${mins.toFixed(0)} min`, kind: "good" };
+  }
+  if (d.testing) {
+    const mins = (d.now - d.testing.started) / 60;
+    return { label: "Testing against v19", detail: `step ${d.testing.step} values: ${done}, ${mins.toFixed(0)} min`, kind: "good" };
+  }
+  if (d.done >= d.iters) return { label: "Finished", detail: `${d.done} steps`, kind: "good" };
+  if (d.running) {
+    const mins = (d.now - d.running.since) / 60;
+    return { label: `Running step ${d.running.step + 1}`, detail: `for ${mins.toFixed(0)} min`, kind: "good" };
+  }
+  if (d.logAge !== null && d.logAge < 20 * 60) return { label: "Between steps", detail: "building the next copies", kind: "good" };
+  if (d.done === 0) return { label: "Waiting to start", detail: "no step finished yet", kind: "warning" };
+  return { label: "Stopped", detail: d.logAge !== null ? `last step ${(d.logAge / 60).toFixed(0)} min ago` : "", kind: "critical" };
+}
+function statusIcon(kind) {
+  const s = el("svg", { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": "true" });
+  el("circle", { cx: 8, cy: 8, r: 7, fill: `var(--${kind})` }, s);
+  const ink = "#ffffff";
+  if (kind === "good") el("path", { d: "M4.5 8.2l2.3 2.3 4.7-4.9", stroke: ink, "stroke-width": 1.8, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }, s);
+  else if (kind === "warning") { el("path", { d: "M8 4.2v4.6", stroke: "#0b0b0b", "stroke-width": 1.8, "stroke-linecap": "round" }, s); el("circle", { cx: 8, cy: 11.3, r: 1.1, fill: "#0b0b0b" }, s); }
+  else el("path", { d: "M5.5 5.5l5 5M10.5 5.5l-5 5", stroke: ink, "stroke-width": 1.8, "stroke-linecap": "round" }, s);
+  return s;
+}
+
+function renderKpis(d) {
+  const box = $("kpis");
+  box.replaceChildren();
+  const st = statusOf(d);
+  const games = d.log.reduce((a, r) => a + Number(r.games || 0), 0);
+  // Median, not mean: a step the laptop slept through (lid closed) must not skew the estimate.
+  const recent = d.log.slice(-10).map(r => Number(r.minutes)).filter(x => x > 0).sort((a, b) => a - b);
+  const mid = recent.length >> 1;
+  const per = recent.length ? (recent.length % 2 ? recent[mid] : (recent[mid - 1] + recent[mid]) / 2) : null;
+  // Each test against v19 takes about half an hour (220 games) while the tuner waits.
+  const pending = (d.checkAt || []).filter(s => s >= d.done && !d.checks.some(c => c.step === s)).length;
+  const left = per !== null ? (d.iters - d.done) * per + pending * 30 : null;
+  const tiles = [
+    { label: "Status", node: (() => { const s = h("span", null, "status"); s.appendChild(statusIcon(st.kind)); s.appendChild(document.createTextNode(st.label)); return s; })(), detail: st.detail },
+    { label: "Steps done", value: `${d.done} of ${d.iters}`, detail: d.log.length ? `last finished at ${d.log[d.log.length - 1].time}` : "" },
+    { label: "Games played", value: games.toLocaleString(), detail: d.log.length ? `${d.log[d.log.length - 1].games} in the last step, both sides of every map` : "both sides of every map" },
+    { label: "Time per step", value: per !== null ? `${per.toFixed(1)} min` : "–", detail: "median of the last 10" },
+    { label: "Time to finish", value: left !== null ? (left >= 90 ? `${(left / 60).toFixed(1)} h` : `${left.toFixed(0)} min`) : "–", detail: left !== null ? `around ${when(d.now + left * 60)}${pending ? `, with ${pending} test${pending > 1 ? "s" : ""} against v19` : ""}` : "" },
+  ];
+  for (const t of tiles) {
+    const k = h("div", null, "kpi");
+    k.appendChild(h("div", t.label, "label"));
+    const v = h("div", t.node ? null : t.value, "value");
+    if (t.node) v.appendChild(t.node);
+    k.appendChild(v);
+    if (t.detail) k.appendChild(h("div", t.detail, "detail"));
+    box.appendChild(k);
+  }
+}
+
+function niceMax(m) {
+  for (const c of [0.2, 0.4, 0.6, 0.8, 1]) if (m <= c) return c;
+  return 1;
+}
+
+function renderSteps(d) {
+  const box = $("steps");
+  box.replaceChildren();
+  const W = Math.max(320, box.clientWidth), H = 220;
+  const m = { l: 44, r: 12, t: 12, b: 28 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Result of each tuning step" }, box);
+  const rows = d.log.map(r => ({ i: Number(r.iter) + 1, r: Number(r.r), w: r.w, dd: r.d, l: r.l, t: r.time, min: r.minutes, games: r.games }));
+  const n = Math.max(rows.length, 10);
+  const ymax = niceMax(Math.max(0.0001, ...rows.map(r => Math.abs(r.r))));
+  const y = (v) => m.t + ph / 2 - (v / ymax) * (ph / 2);
+  const slot = pw / n;
+  const x = (i) => m.l + (i - 0.5) * slot;
+  for (const v of [-ymax, -ymax / 2, 0, ymax / 2, ymax]) {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: v === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, svg);
+    const t = el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-muted)" }, svg);
+    t.textContent = v === 0 ? "0" : signed(v, 1);
+  }
+  const tickEvery = Math.max(1, Math.ceil(n / 10 / 5) * 5);
+  for (let i = 1; i <= n; i++) {
+    if (i !== 1 && i % tickEvery !== 0) continue;
+    const t = el("text", { x: x(i), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, svg);
+    t.textContent = String(i);
+  }
+  const bw = Math.min(24, Math.max(2, slot - 2));
+  const bars = [];
+  for (const r of rows) {
+    const x0 = x(r.i) - bw / 2, y0 = y(0), y1 = y(r.r);
+    const hgt = Math.abs(y1 - y0);
+    const rad = Math.min(4, bw / 2, hgt);
+    let dpath;
+    if (hgt < 0.5) dpath = `M${x0},${y0 - 0.5}h${bw}v1h${-bw}z`;
+    else if (r.r > 0) dpath = `M${x0},${y0}V${y1 + rad}Q${x0},${y1} ${x0 + rad},${y1}H${x0 + bw - rad}Q${x0 + bw},${y1} ${x0 + bw},${y1 + rad}V${y0}Z`;
+    else dpath = `M${x0},${y0}V${y1 - rad}Q${x0},${y1} ${x0 + rad},${y1}H${x0 + bw - rad}Q${x0 + bw},${y1} ${x0 + bw},${y1 - rad}V${y0}Z`;
+    bars.push(el("path", { d: dpath, fill: "var(--series-1)" }, svg));
+  }
+  if (!rows.length) {
+    const t = el("text", { x: m.l + pw / 2, y: m.t + ph / 2 - 10, "text-anchor": "middle", "font-size": 13, fill: "var(--text-secondary)" }, svg);
+    t.textContent = "No step has finished yet. The first takes about 10 minutes.";
+  }
+  const cross = el("line", { y1: m.t, y2: m.t + ph, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (evt) => {
+    if (!rows.length) return;
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const i = Math.min(rows.length, Math.max(1, Math.round((p.x - m.l) / slot + 0.5)));
+    const r = rows[i - 1];
+    cross.setAttribute("x1", x(r.i)); cross.setAttribute("x2", x(r.i)); cross.setAttribute("visibility", "visible");
+    bars.forEach((b, j) => b.setAttribute("opacity", j === i - 1 ? "1" : "0.55"));
+    showTip(evt, `${signed(r.r, 3)}`, [`Step ${r.i}, finished ${r.t}`, `+ copy ${r.w} won, ${r.dd} drawn, ${r.l} lost of ${r.games}`, `${r.min} min`]);
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); bars.forEach(b => b.setAttribute("opacity", "1")); hideTip(); });
+
+  const tbl = $("stepTable");
+  tbl.replaceChildren();
+  const head = tbl.insertRow();
+  for (const [t, num] of [["Step", true], ["Finished", false], ["+ won", true], ["Drawn", true], ["+ lost", true], ["Result", true], ["Minutes", true]]) {
+    const th = h("th", t); if (num) th.className = "num"; head.appendChild(th);
+  }
+  for (const r of rows.slice().reverse()) {
+    const tr = tbl.insertRow();
+    for (const [v, num] of [[r.i, true], [r.t, false], [r.w, true], [r.dd, true], [r.l, true], [signed(r.r, 3), true], [r.min, true]]) {
+      const td = h("td", String(v)); if (num) td.className = "num"; tr.appendChild(td);
+    }
+  }
+}
+
+function renderParams(d) {
+  const box = $("params");
+  box.replaceChildren();
+  const hist = d.history;
+  for (const p of d.params) {
+    const card = h("div", null, "pcard");
+    card.appendChild(h("div", p.name, "pname"));
+    card.appendChild(h("div", DESC[p.name] || "", "pdesc"));
+    const shown = p.avg ?? p.current ?? p.start;
+    card.appendChild(h("div", fmt(shown, p.int), "pval"));
+    const change = (shown !== null && p.start !== null) ? (shown - p.start) : null;
+    const ch = change === null ? "" : `start ${fmt(p.start, p.int)} · ${change === 0 ? "no change" : signed(change / p.step, 2) + " steps"}`;
+    card.appendChild(h("div", ch, "pchange"));
+    const W = 230, H = 64, m = { l: 2, r: 8, t: 8, b: 8 };
+    const sv = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": `${p.name} over the steps` });
+    const vals = [p.start, ...hist.map(s => s[p.name])].filter(v => v !== null && v !== undefined);
+    if (vals.length) {
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      lo -= 0.25 * p.step; hi += 0.25 * p.step;
+      lo = Math.max(lo, p.lo); hi = Math.min(hi, p.hi);
+      if (hi - lo < 1e-9) { hi = lo + p.step; }
+      const n = Math.max(vals.length - 1, 1);
+      const xs = (i) => m.l + (i / n) * (W - m.l - m.r);
+      const ys = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+      el("line", { x1: m.l, x2: W - m.r, y1: ys(p.start), y2: ys(p.start), stroke: "var(--axis)", "stroke-width": 1 }, sv);
+      if (vals.length > 1) {
+        const dpath = vals.map((v, i) => `${i ? "L" : "M"}${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join("");
+        el("path", { d: dpath, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, sv);
+      }
+      const last = vals.length - 1;
+      el("circle", { cx: xs(last), cy: ys(vals[last]), r: 6, fill: "var(--surface)" }, sv);
+      el("circle", { cx: xs(last), cy: ys(vals[last]), r: 4, fill: "var(--series-1)" }, sv);
+      const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" }, sv);
+      const hit = el("rect", { x: 0, y: 0, width: W, height: H, fill: "transparent" }, sv);
+      hit.addEventListener("pointermove", (evt) => {
+        const pt = sv.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+        const q = pt.matrixTransform(sv.getScreenCTM().inverse());
+        const i = Math.min(last, Math.max(0, Math.round((q.x - m.l) / ((W - m.l - m.r) / n))));
+        cross.setAttribute("x1", xs(i)); cross.setAttribute("x2", xs(i)); cross.setAttribute("visibility", "visible");
+        showTip(evt, fmt(vals[i], p.int), [i === 0 ? "starting value" : `after step ${i}`, p.name]);
+      });
+      hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+    }
+    card.appendChild(sv);
+    box.appendChild(card);
+  }
+
+  const tbl = $("paramTable");
+  tbl.replaceChildren();
+  const head = tbl.insertRow();
+  for (const [t, num] of [["Parameter", false], ["What it does", false], ["Start", true], ["Now", true], ["Average, 2nd half", true], ["Change", true], ["Allowed range", true]]) {
+    const th = h("th", t); if (num) th.className = "num"; head.appendChild(th);
+  }
+  for (const p of d.params) {
+    const tr = tbl.insertRow();
+    const shown = p.avg ?? p.current;
+    const change = (shown !== null && shown !== undefined && p.start !== null) ? signed((shown - p.start) / p.step, 2) + " steps" : "–";
+    for (const [v, num] of [[p.name, false], [DESC[p.name] || "", false], [fmt(p.start, p.int), true], [fmt(p.current, p.int), true], [fmt(p.avg, p.int), true], [change, true], [`${fmt(p.lo, p.int)} – ${fmt(p.hi, p.int)}`, true]]) {
+      const td = h("td", String(v)); if (num) td.className = "num"; tr.appendChild(td);
+    }
+  }
+}
+
+function renderMaps(d) {
+  const tbl = $("mapTable");
+  tbl.replaceChildren();
+  const head = tbl.insertRow();
+  for (const [t, num] of [["Map", false], ["+ copy as A", false], ["+ copy as B", false], ["Rounds", true]]) {
+    const th = h("th", t); if (num) th.className = "num"; head.appendChild(th);
+  }
+  if (!d.lastGames.length) {
+    const tr = tbl.insertRow(); const td = h("td", "No finished step yet."); td.colSpan = 4; tr.appendChild(td);
+    return;
+  }
+  const by = new Map();
+  for (const g of d.lastGames) {
+    if (!by.has(g.map)) by.set(g.map, {});
+    const res = !g.ok ? "?" : g.winner === "draw" ? "D" : g.winner === g.plusTeam ? "W" : "L";
+    by.get(g.map)[g.plusTeam] = { res, rounds: g.rounds, reason: g.reason };
+  }
+  for (const [map, r] of by) {
+    const tr = tbl.insertRow();
+    const cell = (x) => x ? `${x.res}${x.reason ? " · " + x.reason : ""}` : "–";
+    const rounds = [r.A, r.B].filter(Boolean).map(x => x.rounds).join(" / ");
+    for (const [v, num] of [[map, false], [cell(r.A), false], [cell(r.B), false], [rounds, true]]) {
+      const td = h("td", String(v)); if (num) td.className = "num"; tr.appendChild(td);
+    }
+  }
+}
+
+function pct(v) { return v === null || v === undefined ? "–" : (100 * v).toFixed(1) + "%"; }
+function verdictCell(s, live) {
+  const td = h("td");
+  const text = s.verdict && live && s.games ? `${s.verdict} so far` : (s.games || !live ? s.verdict : "not started");
+  const kind = s.verdict === "tuned bot better" ? "good" : s.verdict === "tuned bot worse" ? "critical" : null;
+  if (kind && s.games) {
+    const wrap = h("span", null, "status");
+    wrap.appendChild(statusIcon(kind));
+    wrap.appendChild(document.createTextNode(text));
+    td.appendChild(wrap);
+  } else {
+    td.textContent = text || "–";
+  }
+  return td;
+}
+// One block of rows per test: a row per set of maps, then the total. Live rows show games played so far.
+// "vs v21" when a test's opponent is not v19 as submitted (results/tmp_bots/v19_live).
+function vsLabel(ref) {
+  if (!ref || /v19_live$/.test(ref)) return "";
+  return " vs " + ref.split(/[\\/]/).filter(Boolean).pop();
+}
+function checkRows(tbl, step, sets, total, live, ref) {
+  [...sets, total].filter(Boolean).forEach((s, i) => {
+    const tr = tbl.insertRow();
+    if (i === 0) tr.className = "first";
+    if (s === total) tr.classList.add("total");
+    const label = s === total ? "all maps" : s.maps ? `${s.name} (${s.maps})` : s.name;
+    const range = !s.games || s.low === null || s.low === undefined ? "–" : `${pct(s.low)} – ${pct(s.high)}`;
+    const games = live ? `${s.done ?? 0} of ${s.total ?? "?"}` : s.games;
+    const stepCell = h("td", i === 0 ? String(step) + vsLabel(ref) : "", "num");
+    if (i === 0 && live) stepCell.appendChild(h("span", " · live", "live"));
+    tr.appendChild(stepCell);
+    for (const [v, num] of [[label, false], [games, true], [s.won, true], [s.drawn, true], [s.lost, true], [s.games ? pct(s.score) : "–", true], [range, true]]) {
+      const td = h("td", String(v)); if (num) td.className = "num"; tr.appendChild(td);
+    }
+    tr.appendChild(verdictCell(s, live));
+  });
+}
+function renderChecks(d) {
+  const tbl = $("checkTable");
+  tbl.replaceChildren();
+  const head = tbl.insertRow();
+  const cols = [["After step", true], ["Maps", false], ["Games", true], ["Won", true], ["Drawn", true], ["Lost", true], ["Score", true], ["95% range", true], ["Result", false]];
+  for (const [t, num] of cols) { const th = h("th", t); if (num) th.className = "num"; head.appendChild(th); }
+  const planned = (d.checkAt || []).filter(s => s > 0 && !d.checks.some(c => c.step === s) && !(d.testing && d.testing.step === s));
+  const live = d.testLive && !d.testLive.error ? d.testLive : null;
+  if (d.testing) {
+    // The test being played: progress bar, then its results so far (from the replays of finished games).
+    const tr = tbl.insertRow();
+    const td = h("td", null, "progress"); td.colSpan = cols.length;
+    const a = live ? live.all : null;
+    const p = testPct(d);
+    const text = h("div", null, "ptext");
+    if (a && a.total) {
+      text.appendChild(document.createTextNode(`Testing the values from step ${d.testing.step}${vsLabel(d.testing.reference) || " vs v19"}: `));
+      text.appendChild(h("b", `${a.done} of ${a.total} games played (${p}%)`));
+      text.appendChild(document.createTextNode(" · " + live.sets.map(s => `${s.name} ${s.done}/${s.total ?? "?"}`).join(" · ")));
+    } else {
+      text.textContent = `Testing the values from step ${d.testing.step} now: ${d.testing.phase}, ${d.testing.games} games.`;
+    }
+    td.appendChild(text);
+    const bar = h("div", null, "bar");
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100"); bar.setAttribute("aria-valuenow", String(p ?? 0));
+    bar.setAttribute("aria-label", "Games of the test played so far");
+    const fill = h("div", null, "fill"); fill.style.width = `${p ?? 0}%`;
+    bar.appendChild(fill);
+    td.appendChild(bar);
+    if (d.testLive && d.testLive.error) td.appendChild(h("div", `Live results unavailable: ${d.testLive.error}`, "muted"));
+    tr.appendChild(td);
+    if (live) checkRows(tbl, live.step, live.sets, live.all, true, d.testing.reference);
+  }
+  if (planned.length || (!d.checks.length && !d.testing)) {
+    const tr = tbl.insertRow();
+    const msg = planned.length ? `Next test after step ${planned[0]}${planned.length > 1 ? ` (then ${planned.slice(1).join(", ")})` : ""}.`
+      : "No test planned. Start the tuner with --check-at to add some.";
+    const td = h("td", msg, "muted"); td.colSpan = cols.length; tr.appendChild(td);
+  }
+  for (const c of d.checks.slice().reverse()) checkRows(tbl, c.step, c.sets || [], c.all, false, c.reference);
+  // Results by map: one column per test.
+  const box = $("checkMapsBox");
+  const mt = $("checkMaps");
+  mt.replaceChildren();
+  box.hidden = !d.checks.length;
+  if (!d.checks.length) return;
+  const mh = mt.insertRow();
+  for (const [t, num] of [["Map", false], ["Set", false], ...d.checks.map(c => [`Step ${c.step}: won-drawn-lost`, true])]) {
+    const th = h("th", t); if (num) th.className = "num"; mh.appendChild(th);
+  }
+  const keys = new Map();
+  for (const c of d.checks) for (const s of c.sets || []) for (const m of Object.keys(s.perMap || {})) keys.set(`${s.name}|${m}`, { set: s.name, map: m });
+  for (const { set, map } of [...keys.values()].sort((a, b) => a.set.localeCompare(b.set) || a.map.localeCompare(b.map))) {
+    const tr = mt.insertRow();
+    tr.appendChild(h("td", map));
+    tr.appendChild(h("td", set));
+    for (const c of d.checks) {
+      const s = (c.sets || []).find(x => x.name === set);
+      const r = s && s.perMap ? s.perMap[map] : null;
+      const td = h("td", r ? r.join("-") : "–"); td.className = "num"; tr.appendChild(td);
+    }
+  }
+}
+
+function render() {
+  if (!DATA) return;
+  renderKpis(DATA);
+  renderChecks(DATA);
+  renderSteps(DATA);
+  renderParams(DATA);
+  renderMaps(DATA);
+  const card = $("errCard");
+  card.hidden = !DATA.errTail.length;
+  $("errTail").textContent = DATA.errTail.join("\n");
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/data", { cache: "no-store" });
+    DATA = await res.json();
+    DATA.checks = DATA.checks || [];
+    DATA.checkAt = DATA.checkAt || [];
+    document.body.classList.remove("stale");
+    $("updated").textContent = "Updated " + new Date().toLocaleTimeString() + " · refreshes every 30 s";
+    render();
+  } catch (e) {
+    document.body.classList.add("stale");
+    $("updated").textContent = "Can't reach the tuning page server (is tools/spsa_dashboard.py running?)";
+  }
+}
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

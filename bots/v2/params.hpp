@@ -1,0 +1,329 @@
+#pragma once
+
+// Tunables. The tournament script compares copies of the bot that differ only here.
+namespace params {
+
+// Log every decision (local debugging only: output costs points in the judge).
+inline constexpr bool DEBUG = false;
+// No map data: every map is learnt from what we see, as on the unseen tournament maps (v9
+// dropped the built-in copies of the old ladder maps on 2 Oct).
+
+// Round 0: if the start body is still unknown, assume the straight line behind the head.
+inline constexpr bool STRAIGHT_START = true; 
+
+// --- Phases ---------------------------------------------------------------
+// Swarm phase: split in half whenever this long, up to the team's dragon cap. Many small
+// dragons gather pearls in parallel, cannot all be caught, and trade heads cheaply.
+inline constexpr int SWARM_SPLIT_LEN = 4;
+// Split even on a turn we could eat (the parent then waits a turn). v2d found ~20% more
+// dragons and ~15% more total length by round 150 this way.
+inline constexpr bool SPLIT_WHILE_EATING = true;
+// Chained splits (from v2d): count a stuck child of 4+ splitting again on its first turn.
+inline constexpr bool CHAIN_SPLIT = false;
+// No swarm split while an enemy head can reach ours (the parent stands still for a turn).
+inline constexpr bool THREAT_ON_OUR_HEADS = false;
+// Delay a swarm split whose child could neither see its body nor be told it by sonar.
+inline constexpr bool SPLIT_WAITS_FOR_HANDOFF = true;
+// From this round on: no more swarm splits; small dragons feed pearls to the king (our queen,
+// see QUEEN_KING), so we finish with one long queen.
+inline constexpr int CONSOLIDATE_ROUND = 440;
+// Feeding starts here: a dragon that reaches the king dies for it at once. v4.46 waited for
+// CONSOLIDATE_ROUND while everyone gathered from KING_PULL_ROUND, boxing the king in.
+inline constexpr int FEED_ROUND = 400;
+// From FEED_ROUND, a dragon with no known way to our queen (sealed in kelp) feeds the biggest
+// ally it sees instead, so a long dragon decides a tie on queens.
+inline constexpr bool QUEEN_SEALED_FALLBACK = false;
+// From CONSOLIDATE_ROUND a dragon of KING_ROOM_LEN+ judges escape splits by its longest surviving
+// piece, not their sum (the ladder game we lost 19-20 had our 24-long king split itself to 12).
+inline constexpr bool ENDGAME_KEEP_WHOLE = true;
+
+// Insurance: losing every dragon loses the game outright, so keep at least this many alive
+// by splitting a small child off any dragon long enough to spare it.
+inline constexpr int MIN_UNITS = 2;
+inline constexpr int INSURANCE_MIN_LEN = 8;
+inline constexpr int INSURANCE_CHILD = 3;
+
+// --- Head trades (moving onto an enemy head kills both dragons) -------------
+// Take an even trade (same length) only while we have at least this many dragons.
+inline constexpr int TRADE_MIN_UNITS = 6;
+// Longest sprint we plan in order to reach an enemy head (see NEW_SPRINT for how far one can go).
+inline constexpr int STRIKE_MAX_STEPS = 6;
+// Standing where an enemy head can reach us next turn: per segment we would lose more than it.
+inline constexpr double THREAT_PER_LEN = 60.0;
+// ... and a small penalty when the trade it could take would be even.
+inline constexpr double THREAT_EVEN = 15.0;
+// Hunting: pull towards enemy heads worth trading with, per segment gained (capped).
+inline constexpr double HUNT_ATTRACT = 60.0;
+inline constexpr double HUNT_GAIN_CAP = 10.0;
+inline constexpr int HUNT_MEMORY = 8; // rounds a sighting stays worth chasing
+// Aggression: with at least AGGRO_RATIO times as many of our heads in view as theirs (and a few
+// dragons to spare), take even trades and chase harder.
+inline constexpr double AGGRO_RATIO = 2.0;
+inline constexpr int AGGRO_MIN_UNITS = 3;
+inline constexpr double HUNT_ATTRACT_AGGRO = 200.0;
+
+// --- Consolidation (feeding the king) -----------------------------------------
+// Any visible ally longer than us (ties to the lower id) is a king worth dying next to.
+inline constexpr int FEED_MARGIN = 0;         // extra length (beyond a tie) a king needs over us
+inline constexpr int FEED_DIST = 2;           // die this close (in steps) to the king's head
+inline constexpr int FEED_KEEP_UNITS = 2;     // never feed if it would leave fewer dragons
+inline constexpr int KEEP_WHOLE_MIN_SPACE = 999; // endgame king: no escape split while it has this much room (999 = off)
+inline constexpr bool DOOMED_BLIND_SPLIT = true;  // doomed with a partly known body: split anyway
+inline constexpr bool FINAL_MERGE = true;     // from FINAL_MERGE_ROUND, feed down to one dragon
+inline constexpr int FINAL_MERGE_ROUND = 450;
+inline constexpr double FEED_ATTRACT = 400.0; // pull towards a king we could feed
+
+// --- Move scoring weights -------------------------------------------------------
+inline constexpr double EAT_NOW = 400.0;         // stepping onto a pearl this turn
+inline constexpr double FOOD_BEST = 300.0;       // best discounted pearl reachable
+inline constexpr double FOOD_SUM = 3.0;          // sum of discounted pearl value (local richness tie-break)
+inline constexpr double GAMMA_BEST = 0.85;       // per-step discount for the best target
+inline constexpr double GAMMA_SUM = 0.8;         // per-step discount for the sum
+inline constexpr double TRAPPED = 20000.0;       // cannot reach our own tail and little room
+// Count as our room only tiles we reach no later than any other dragon's head.
+inline constexpr bool VORONOI = true;
+// Long dragons value room: per tile reachable, up to this many tiles per segment.
+inline constexpr int KING_ROOM_LEN = 10;
+inline constexpr double KING_ROOM = 6.0;
+inline constexpr int KING_ROOM_TILES_PER_LEN = 3;
+inline constexpr double UNKNOWN_PORTAL = 3000.0; // stepping into a portal whose far end we do not know
+inline constexpr double OUT_OF_VIEW = 1500.0;    // landing on a tile we cannot see (through a portal)
+// ... for a dragon of DIVE_MAX_LEN or less, whose far end we know: Portals hides every food box
+// behind a portal, and the 2000-rated team out-ate us 106 to 12 by round 50 there. 1500 = off.
+inline constexpr double OUT_OF_VIEW_SMALL = 150.0;
+inline constexpr double REVISIT = 40.0;          // per unit of recent-visit heat on the destination
+inline constexpr double REVISIT_DECAY = 0.95;    // heat decay per round
+
+// --- Diving into lanes and dead ends (where most pearls spawn on maze maps) ----------
+inline constexpr bool DIVE = true;
+inline constexpr bool DIVE_WALLS_ONLY = true;    // dive only into pockets made by kelp (v2d: anywhere)
+inline constexpr double DIVE_MIN_FOOD = 1.0;     // expected pearls in the pocket before we bother
+inline constexpr int DIVE_MAX_LEN = 5;           // longer dragons are worth too much to risk
+inline constexpr int DIVE_ESCAPE_LEN = 4;        // this long after eating: we can split our way out
+inline constexpr double DIVE_ESCAPE_COST = 400.0; // the 2-long parent we leave behind, roughly
+// ... less this per expected pearl in the pocket beyond the first: rich lanes (Portals' middle
+// lane respawns every round) are worth the parent. 0 = off.
+inline constexpr double DIVE_RICH_DISCOUNT = 200.0;
+inline constexpr int DIVE_MAX_DEATH_LEN = 3;     // dragons this small may die in there...
+inline constexpr int DIVE_MIN_UNITS = 8;         // ...while we have at least this many
+inline constexpr double DIVE_SEG_COST = 350.0;   // per segment of a dragon that dies in the pocket
+
+// --- Sonar ------------------------------------------------------------------------
+inline constexpr bool SONAR = true;
+// Knowledge sharing on maps we don't know (a split child is a new process that knows nothing):
+// FOOD pings carry the map's symmetry and rich pearl tiles (largest countdown seen <= RICH_CD),
+// sent on half the free directions before KING_PULL_ROUND, relayed by whoever hears them.
+inline constexpr bool SHARE_FOOD = true;
+inline constexpr int RICH_CD = 36;            // a tile never seen with a longer countdown is "rich"
+inline constexpr int FOOD_STALE = 120;        // rounds a relayed spot is kept without a refresh
+// Work out the map's symmetry from what we see (mirrored tiles share a pearl countdown), then
+// mirror every sighting of pearls and walls.
+inline constexpr bool INFER_SYMMETRY = true;
+inline constexpr int SYM_MIN_AGREE = 4;       // matching countdown pairs, with no contradiction
+inline constexpr bool DEBUG_SONAR = false;    // log body handoffs (local debugging only)
+inline constexpr int KING_STALE = 30;         // rounds a king record lives without a refresh
+inline constexpr int KING_GROW_ROUND = 999;   // from here the king stops swarm-splitting (999 = never)
+inline constexpr int KING_PULL_ROUND = 400;   // from here, head for the king we know of
+inline constexpr double KING_APPROACH = 40.0; // per step closer to that king
+// Merging: dragons of MERGE_MIN_LEN+ that are not the king are pulled this many times harder,
+// so a second king travels to the first and feeds it (at round 500 a second king of about 20
+// was usually left over on big maps). 1 = off.
+inline constexpr int MERGE_MIN_LEN = 8;
+inline constexpr double MERGE_APPROACH_MULT = 1.0;
+// Feeding ring: feeders keep this many steps from the king's head unless it's their turn
+// (one at a time; the king flags "crowded" over sonar). 0 = off.
+inline constexpr int FEED_RING = 0;
+inline constexpr double BIG_THREAT_SCALE = 1.0;  // endgame: threat penalty multiplier for dragons of KING_ROOM_LEN+
+inline constexpr bool BIG_ASSUME_LONG = false;   // endgame big dragons: enemies with unseen tails may sprint the max
+inline constexpr int RING_FRESH = 5;              // rounds the king's "crowded" flag counts
+inline constexpr double RING_ENTER_PENALTY = 400.0;
+// Early king (the ~2000-rated teams grow one from round ~150; we sat at length 3-4 until 380 and
+// the late feeding wasted most of our length): on big maps, from EARLY_KING_ROUND the longest
+// dragon (agreed over sonar) stops swarm-splitting, is protected like the endgame king, and
+// others leave the pearls around it alone. Small maps keep the pure swarm.
+inline constexpr bool EARLY_KING = false;
+inline constexpr int EARLY_KING_ROUND = 150;
+inline constexpr int EARLY_KING_MIN_AREA = 900;   // width x height
+inline constexpr bool EARLY_KING_FEED_AT_CAP = false; // at the dragon cap, small dragons next to it feed it
+// Midgame feeding (the 2000-rated team's king ate mostly its own small dragons from round ~250):
+// from EARLY_FEED_ROUND small dragons next to the early king die for it while we keep enough dragons,
+// and with EARLY_PULL_MIN_UNITS+ dragons small ones head for it. 999 = off.
+inline constexpr int EARLY_FEED_ROUND = 999;
+inline constexpr int EARLY_FEED_MAX_LEN = 3;
+inline constexpr int EARLY_FEED_MIN_UNITS = 12;
+inline constexpr int EARLY_PULL_MIN_UNITS = 999;
+// Big-dragon guard: dragons of 10+ lost ~140 length a game to head-on kills on the enemy's turn,
+// mostly from round 150 and mostly with no safe move left by then. Keep a margin: a penalty per
+// segment we are longer than any enemy whose reach (its sprint, 6 if its tail is unseen) plus
+// BIG_GUARD_MARGIN covers the tile. 0 = off.
+inline constexpr double BIG_GUARD_PER_LEN = 0.0;
+inline constexpr int BIG_GUARD_MARGIN = 2;
+inline constexpr int BIG_GUARD_ROUND = 150;
+// King protection (king_protection_design.md). A: interceptors. Small dragons treat an enemy
+// head near a big ally (INTERCEPT_MIN_KING+, longer than that enemy) as worth a trade, even an
+// even or slightly losing one, and hunt it.
+inline constexpr bool INTERCEPT = false;
+inline constexpr int INTERCEPT_RADIUS = 5;     // enemy head this close (steps) to the big ally's head
+inline constexpr int INTERCEPT_MIN_KING = 10;
+inline constexpr int INTERCEPT_MAX_LEN = 5;    // only dragons this small intercept
+inline constexpr int INTERCEPT_MIN_UNITS = 4;
+inline constexpr double INTERCEPT_GAIN = 1.5;  // counts like a trade gaining 1.5 segments
+// C: keep-away. A big dragon with an enemy head near keeps its distance, graded by distance,
+// and backs towards its own dragons (its interceptors).
+inline constexpr bool KEEPAWAY = false;
+inline constexpr int KEEPAWAY_ROUND = 150;
+inline constexpr int KEEPAWAY_DIST = 4;        // penalty for ending within this many steps of an enemy head
+inline constexpr double KEEPAWAY_W = 60.0;     // per step inside that distance
+inline constexpr double KEEPAWAY_ALLY = 30.0;  // per step closer than 6 to an ally head
+inline constexpr int KING_FOOD_RADIUS = 3;         // pearls this close to the king are its own
+inline constexpr double KING_FOOD_PENALTY = 300.0; // for a feeder that eats one anyway
+
+// --- In-game feedback --------------------------------------------------------------
+// Numbers war: ally vs enemy heads around us (view + sonar echoes), smoothed.
+inline constexpr bool ADAPT_NUMBERS = false;
+inline constexpr double ADAPT_DECAY = 0.9;        // per turn
+inline constexpr double ADAPT_HI = 1.5;           // this many of ours per theirs: take even trades, chase
+inline constexpr double ADAPT_LO = 0.67;          // this few: no even trades, ...
+inline constexpr double ADAPT_THREAT_SCALE = 2.0; // ... and fear enemy reach twice as much
+// Length race: from RACE_ROUND compare our king with the longest enemy seen (relayed in KING).
+inline constexpr bool RACE_AWARE = false;
+inline constexpr int RACE_ROUND = 340;
+inline constexpr int RACE_MARGIN = 3;             // this many segments counts as ahead / behind
+inline constexpr int ENEMY_MAX_STALE = 60;        // rounds an enemy length sighting counts
+inline constexpr double RACE_KING_SAFE = 3.0;     // ahead: the king fears enemy reach 3x (and values room 2x)
+inline constexpr double RACE_KING_BOLD = 0.5;     // behind: the king fears it half as much
+
+// --- Ideas from the top teams' reports (each off by default) --------------------------
+inline constexpr bool LOCAL_RECYCLE = false;     // after the switch, small dragons die in front of long allies
+inline constexpr int RECYCLE_MIN_GAIN = 5;       // the ally is at least this much longer
+inline constexpr double RECYCLE_PROB = 0.5;      // per turn when next to one
+inline constexpr double SPREAD_WEIGHT = 0.0;     // swarm phase: per tile of distance from the nearest ally head (max 4)
+inline constexpr double SPREAD_ADJ = 80.0;       // ... and a penalty for ending next to one
+inline constexpr double SPAWN_CLEAR = 0.0;       // penalty for standing on a tile whose pearl is due within 2 rounds
+inline constexpr bool KAMIKAZE = false;          // 2-3 long dragons ram any enemy head at least as long
+inline constexpr int KAMIKAZE_MIN_UNITS = 4;
+inline constexpr bool SPLIT_RELAXED = false;     // swarm split if one half is safe and the child has an exit
+
+// --- Queens (1 Oct 2026 "Slay Queen" rules) ----------------------------------------
+// Dragons 0 and 1 are the queens. At round 500 the longer queen wins (a dead queen is 0 long),
+// then the longest dragon, then total length. Every dragon gets ceil(L/4) free steps a turn.
+// Our queen is the king: the one everyone feeds, and it never feeds anyone. Off: the v4.46
+// king (the longest dragon we know of).
+inline constexpr bool QUEEN_KING = true;
+// The queen swarm-splits like the others only before this round (0: never). 60 beat 0 by 28-14
+// head to head (2 Oct): twice the swarm early, and she is still short when it gets dangerous.
+inline constexpr int QUEEN_SPLIT_UNTIL = 60;
+// ... and only while she is this short: a queen that starts long (25 on the new Slithery Fight)
+// keeps her length.
+inline constexpr int QUEEN_SPLIT_MAX_LEN = 8;
+// Queen first at food: the others leave pearls within this many steps of our queen when they
+// see her (all game), and she ignores which ally would reach a pearl first. -1 = off.
+inline constexpr int QUEEN_FOOD_RADIUS = 3;
+// Our queen scores pearls (eating now, and the best and sum of those she can reach) this many
+// times as much as other dragons do.
+inline constexpr double QUEEN_FOOD_WEIGHT = 1.0;
+// Mid-game feeding: from QUEEN_MIDFEED_ROUND, while we have QUEEN_MIDFEED_MIN_UNITS dragons, one of
+// QUEEN_MIDFEED_MAX_LEN or less within FEED_DIST of our queen dies for her. 999 = off.
+inline constexpr int QUEEN_MIDFEED_ROUND = 999;
+inline constexpr int QUEEN_MIDFEED_MAX_LEN = 3;
+inline constexpr int QUEEN_MIDFEED_MIN_UNITS = 16;
+// After a split the child moves later in the round, so its tail frees before the parent's next
+// move. v4.46 counted one move later, so a split keeping a long queen looked fatal: on the new
+// Slithery Fight our coiled 25-long queen kept 2 and gave away 23.
+inline constexpr bool SPLIT_CHILD_EARLY = true;
+// Dragon slots kept free for our queen's emergency splits (only she may take them; 0 = off): on
+// Schooltime our team sat at the 64 cap and the trapped queen could not split.
+inline constexpr int QUEEN_SPARE_SLOTS = 0;
+// Budding: before QUEEN_BUD_UNTIL, a queen of QUEEN_BUD_LEN+ splits off a child of
+// QUEEN_BUD_CHILD (which then swarm-splits), keeping the rest. 0 = off.
+inline constexpr int QUEEN_BUD_LEN = 0;
+inline constexpr int QUEEN_BUD_CHILD = 4;
+inline constexpr int QUEEN_BUD_UNTIL = 300;
+// The queen takes no head trades and no dives into dead ends...
+inline constexpr bool QUEEN_SAFE = true;
+// ... and stays off every tile an enemy head can reach before her next turn (any length:
+// even a length-2 enemy trading heads costs us the game), assuming unseen tails sprint the max.
+// More than TRAPPED: being boxed in may still end in an escape, a head trade never does.
+// Scaled by the chance an enemy reaches the tile: 1 within the reach of the length we see;
+// an enemy whose tail is out of view may be longer, QUEEN_LONGER_P per extra segment it needs.
+inline constexpr double QUEEN_THREAT = 25000.0;
+inline constexpr double QUEEN_LONGER_P = 0.5;
+// Enemies seen in the last QUEEN_STALE_AGE rounds, out of view now: from where we saw them,
+// a step closer per round since, at QUEEN_STALE_P.
+inline constexpr int QUEEN_STALE_AGE = 3;
+inline constexpr double QUEEN_STALE_P = 0.5;
+// Room to dodge: per tile short of QUEEN_FREEDOM_CAP within 3 steps of where she ends
+// (a 1-wide corridor has about 6, the open about 20).
+inline constexpr double QUEEN_FREEDOM = 60.0;
+inline constexpr int QUEEN_FREEDOM_CAP = 16;
+// Two-round look-ahead: next round each enemy may step its free steps towards her and then
+// strike. Where she ends, count the tiles her next free steps reach that stay out of every
+// such reach; short of QUEEN_ESCAPES, pay QUEEN_CORNERED in proportion. 0 = off.
+inline constexpr double QUEEN_CORNERED = 0.0;
+inline constexpr int QUEEN_ESCAPES = 3;
+// ... and does not end a move near the edge of her view, where an enemy she cannot see may
+// sprint in: per step closer than 3 to a tile out of view (a single step never is).
+inline constexpr double QUEEN_UNSEEN = 1000.0;
+// ... and keeps her distance: per step inside QUEEN_KEEPAWAY_DIST of an enemy head.
+inline constexpr double QUEEN_KEEPAWAY = 100.0;
+inline constexpr int QUEEN_KEEPAWAY_DIST = 4;
+// A trapped queen judges escape splits by her own surviving length (she keeps the head), plus
+// this much per segment of a child that survives (it can feed her later, at half value).
+inline constexpr double QUEEN_CHILD_WEIGHT = 0.25;
+// Hunting: any dragon but our queen trades heads with the enemy queen, whatever its length.
+inline constexpr bool HUNT_QUEEN = true;
+inline constexpr double QUEEN_KILL_GAIN = 10.0;  // counts like a trade gaining this many segments
+inline constexpr int QUEEN_STRIKE_MAX = 8;       // longest sprint we plan at the enemy queen's head
+inline constexpr int QUEEN_HUNT_MEMORY = 20;     // rounds a sighting of her stays worth chasing
+// Her sightings travel over sonar (ENEMY_QUEEN) for QUEEN_SHARE_AGE rounds (0 = off), and hunters (dragons
+// of QUEEN_HUNTER_MAX_LEN or less, every QUEEN_HUNT_SHARE-th id, while we have QUEEN_HUNT_MIN_UNITS)
+// score QUEEN_HUNT_APPROACH per step closer to where she was seen, until FEED_ROUND. 0 = off.
+inline constexpr int QUEEN_SHARE_AGE = 30;
+inline constexpr double QUEEN_HUNT_APPROACH = 30.0;
+inline constexpr int QUEEN_HUNTER_MAX_LEN = 6;
+inline constexpr int QUEEN_HUNT_SHARE = 2;
+inline constexpr int QUEEN_HUNT_MIN_UNITS = 4;
+// Before anyone has seen her, hunters head for where she started: the mirror image of our
+// queen's start (once the map's symmetry is known).
+inline constexpr bool QUEEN_HUNT_SPAWN = true;
+// Hunters chase only from within this many steps of her last known position (0: any distance).
+inline constexpr int QUEEN_HUNT_RADIUS = 0;
+// When one of ours sees her die (in view one round, no part of her the next), the death is
+// relayed in the same message (length 0) for this many rounds. Hunting stops, no even trades,
+// and our queen weighs threats this much more: she only has to live.
+inline constexpr int QUEEN_DEAD_SHARE_AGE = 60;
+inline constexpr double QUEEN_ENEMY_DEAD_SAFE = 1.5;
+// Guards: a small dragon (QUEEN_GUARD_MAX_LEN or less, while we have QUEEN_GUARD_MIN_UNITS)
+// trades heads with any enemy head within QUEEN_GUARD_RADIUS steps of our queen, counted like a
+// trade gaining QUEEN_GUARD_GAIN segments.
+inline constexpr bool QUEEN_GUARD = false;
+inline constexpr int QUEEN_GUARD_RADIUS = 4;
+inline constexpr int QUEEN_GUARD_MAX_LEN = 6;
+inline constexpr int QUEEN_GUARD_MIN_UNITS = 3;
+inline constexpr double QUEEN_GUARD_GAIN = 3.0;
+// Sprint reach under the new rules: ceil(L/4) free steps, then one segment per step down to
+// length 2, so ceil(L/4) + L - 2 steps (v4.46 assumed L - 1).
+inline constexpr bool NEW_SPRINT = true;
+// Enemy reach passes through our own body (it moves away, and we often move onto it). v4.46
+// treated it as a wall, so the tile we moved to could look safe with an enemy next to it.
+inline constexpr bool OWN_BODY_OPEN = true;
+// Use the free steps: a dragon of 5+ (2+ free steps) also weighs every path of up to
+// MULTI_MAX_STEPS steps through tiles in view. A long queen outruns small hunters this way.
+inline constexpr bool MULTI_STEP = true;
+inline constexpr int MULTI_MAX_STEPS = 3;
+// CPU (100M points a turn): on maps of more than MULTI_BIG_TILES tiles paths stop at
+// MULTI_MAX_STEPS_BIG steps (3 steps on 64x64 maps peaked at 87-89M points), and every move's
+// search stops EVAL_MAX_DEPTH steps out (or the dragon's length plus 8, so it still finds its tail).
+inline constexpr int MULTI_BIG_TILES = 2048;
+inline constexpr int MULTI_MAX_STEPS_BIG = 2;
+inline constexpr int EVAL_MAX_DEPTH = 30;
+inline constexpr bool MULTI_QUEEN_ONLY = false;
+
+// --- Pearl-belief model ----------------------------------------------------------
+inline constexpr double ENEMY_CLOSER = 0.15;     // enemy head reaches the pearl first
+inline constexpr double ALLY_CLOSER = 0.25;      // an ally reaches it first
+inline constexpr double REMEMBERED_DECAY = 0.97; // per round a remembered pearl may have been eaten
+inline constexpr double UNSEEN_PRIOR = 0.6;      // scale on "has probably spawned by now" for unseen tiles
+inline constexpr int UNKNOWN_MAP_GAP = 150;      // assumed mean spawn gap when the map is unknown
+
+} // namespace params
