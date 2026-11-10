@@ -1,7 +1,96 @@
-# local build output and match artefacts
+# Bots: only the final submitted versions (v1 to v8) are public
+bots/*
+!bots/v1/
+!bots/v2/
+!bots/v3/
+!bots/v4/
+!bots/v5/
+!bots/v6/
+!bots/v7/
+!bots/v8/
+
+# Active bot folder (frozen versions are in bots/v1..v8)
+mybot/
+
+# Kit snapshots and archives
+v21_kit/
+v21_kit.zip
+*.zip
+
+# Docs: only core documentation is public
+docs/*
+!docs/BOT_ARCHITECTURE.md
+!docs/PARAMETER_TUNING.md
+!docs/STRATEGY_ANALYSIS.md
+
+# Tools: only core production tools and SPSA suite are public
+tools/*
+!tools/tune/
+!tools/run_tournament.py
+!tools/run_match.py
+!tools/analyze_lengths.py
+!tools/analyze_deaths.py
+!tools/generate_maps_header.py
+!tools/render_map.py
+!tools/ladder_auto_scrim.py
+!tools/download_replays.py
+!tools/query_team_games.py
+!tools/inspect_replay.cjs
+!tools/replaylib.cjs
+!tools/summarize_replays.cjs
+!tools/setup_replay_viewer.py
+!tools/summarize_single_replay.py
+!tools/analyze_turns.cjs
+!tools/spsa_tune.py
+!tools/spsa_validate.py
+!tools/spsa_dashboard.html
+!tools/spsa_dashboard.py
+!tools/generate_world_maps.py
+!tools/create_bot_variant.py
+!tools/run_ab_test.sh
+!tools/run_ab_nomap_test.sh
+
+# Behaviour cloning data and trained models (not part of the public repo)
+results/bc/
+results/teams/
+
+# Non-official map sets (only maps/ is public in the repo)
+maps_*/
+maps_blind/
+maps_gen/
+maps_heldout/
+maps_ladder/
+maps_ladder3/
+maps_official/
+maps_pkg129/
+maps_swapped/
+maps_variants/
+maps_world/
+maps_worldgen/
+
+# Local build output and match artefacts
 .unswbc-build/
 replays/
 *.replay
 results/
 __pycache__/
 *.pyc
+*.exe
+.built-from
+
+# IDE and tool config
+.claude/
+*.json.bak
+
+# Python
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
